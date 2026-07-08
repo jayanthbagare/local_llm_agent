@@ -1,0 +1,20 @@
+{
+  "id": "gemma-2-2b-it",
+  "name": "Gemma 2 (2B)",
+  "provider": "google",
+  "url": "https://huggingface.co/google/gemma-2-2b-it-onnx/resolve/main/",
+  "files": {
+    "model": "gemma2-2b-it-q4f16.onnx",
+    "tokenizer": "tokenizer.json",
+    "config": "config.json"
+  },
+  "format": "onnx",
+  "quantization": "int4",
+  "contextLength": 8192,
+  "requiredVRAM": "~1.5 GB",
+  "downloadSize": "~1.6 GB",
+  "chatTemplate": "{{ bos_token }}{% for message in messages %}{% if message.role == 'user' %}<start_of_turn>user\n{{ message.content }}<end_of_turn>\n{% elif message.role == 'assistant' %}<start_of_turn>model\n{{ message.content }}<end_of_turn>\n{% elif message.role == 'system' %}<start_of_turn>system\n{{ message.content }}<end_of_turn>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<start_of_turn>model\n{% endif %}",
+  "languages": ["en", "multi"],
+  "capabilities": ["chat", "tool-calling"],
+  "recommended": false
+}

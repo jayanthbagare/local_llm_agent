@@ -1,0 +1,212 @@
+// ── SDK: Unified Public API ──
+// One import to get the full local LLM agent experience.
+// Composes llm-engine, nano-agent, skill-store, and tool-bridge.
+
+import { SimulatedEngine, WebGPUEngine } from '../../llm-engine/src/index.js';
+import { NanoAgent } from '../../nano-agent/src/agent.js';
+import { SkillStore } from '../../skill-store/src/store.js';
+import { ToolBridge, createToolBridge } from '../../tool-bridge/src/bridge.js';
+import type { LLMEngine, LoadOptions } from '../../llm-engine/src/types.js';
+import type { NanoAgentConfig, AgentEvent } from '../../nano-agent/src/agent.js';
+import type { SkillDefinition } from '../../skill-store/src/types.js';
+import type { ToolResult } from '../../tool-bridge/src/bridge.js';
+
+/** Options for creating a complete agent with createAgent() */
+export interface CreateAgentOptions {
+  /** Model ID to load (e.g., 'phi-3-mini-4k') */
+  model?: string;
+  /** Model load options */
+  loadOptions?: Partial<LoadOptions>;
+  /** Use simulated engine (no WebGPU required) */
+  simulated?: boolean;
+  /** Custom engine instance */
+  engine?: LLMEngine;
+  /** System prompt */
+  systemPrompt?: string;
+  /** Maximum agent steps per query */
+  maxSteps?: number;
+  /** Temperature for generation */
+  temperature?: number;
+  /** Top-P for generation */
+  topP?: number;
+  /** Max tokens per generation */
+  maxTokens?: number;
+  /** Skill IDs to enable (loads from bundled skills) */
+  skills?: string[];
+  /** Custom skill definitions */
+  customSkills?: SkillDefinition[];
+  /** Skill store options */
+  skillStoreOptions?: { registryUrl?: string; allowRemote?: boolean; cacheTTL?: number };
+}
+
+/** The complete agent instance returned by createAgent */
+export interface Agent {
+  /** Run the agent with a user query */
+  run(input: string): AsyncIterable<AgentEvent>;
+  /** Register a new skill at runtime */
+  registerSkill(skill: SkillDefinition): void;
+  /** Register multiple skills */
+  registerSkills(skills: SkillDefinition[]): void;
+  /** Fetch a skill from remote registry */
+  fetchSkill(id: string): Promise<SkillDefinition>;
+  /** Get all registered skills */
+  getSkills(): SkillDefinition[];
+  /** Get engine info */
+  getEngine(): LLMEngine;
+  /** Abort current execution */
+  abort(): void;
+  /** Clear conversation history */
+  clearHistory(): void;
+  /** Unload the model and free resources */
+  destroy(): Promise<void>;
+}
+
+/**
+ * Create a complete agent with one call.
+ *
+ * @example
+ * ```ts
+ * const agent = await createAgent({
+ *   model: 'phi-3-mini-4k',
+ *   skills: ['calculator'],
+ *   simulated: true, // for testing without WebGPU
+ * });
+ *
+ * for await (const event of agent.run('What is 42 * 2?')) {
+ *   if (event.type === 'thinking') console.log('🤔', event.content);
+ *   if (event.type === 'tool_call') console.log('🔧', event.tool);
+ *   if (event.type === 'done') console.log('✅', event.response);
+ * }
+ * ```
+ */
+export async function createAgent(options: CreateAgentOptions = {}): Promise<Agent> {
+  // 1. Create or use engine
+  let engine: LLMEngine;
+  if (options.engine) {
+    engine = options.engine;
+  } else if (options.simulated) {
+    engine = new SimulatedEngine();
+  } else {
+    // Try WebGPU, fall back to simulated
+    try {
+      engine = new WebGPUEngine();
+    } catch {
+      engine = new SimulatedEngine();
+    }
+  }
+
+  // 2. Load model
+  if (!engine.isLoaded() && (options.model || options.loadOptions)) {
+    await engine.load({
+      modelId: options.model || 'phi-3-mini-4k',
+      ...options.loadOptions,
+    });
+  } else if (!engine.isLoaded() && !options.engine) {
+    // Load simulated by default if no model specified
+    await engine.load({ modelId: 'simulated' });
+  }
+
+  // 3. Create skill store
+  const skillStore = new SkillStore(options.skillStoreOptions);
+
+  // 4. Create tool bridge
+  const toolBridge = createToolBridge();
+
+  // 5. Create agent
+  const nanoAgentConfig: NanoAgentConfig = {
+    engine,
+    toolBridge,
+    systemPrompt: options.systemPrompt,
+    maxSteps: options.maxSteps,
+    temperature: options.temperature,
+    topP: options.topP,
+    maxTokens: options.maxTokens,
+  };
+
+  const agent = new NanoAgent(nanoAgentConfig);
+
+  // 6. Register custom skills
+  if (options.customSkills) {
+    agent.registerSkills(options.customSkills);
+    for (const skill of options.customSkills) {
+      skillStore.registerBuiltin(skill);
+    }
+  }
+
+  // 7. Register built-in skills from store
+  if (options.skills) {
+    for (const skillId of options.skills) {
+      const skill = skillStore.getBuiltin(skillId);
+      if (skill) {
+        agent.registerSkill(skill);
+      } else {
+        // Try to fetch from remote
+        try {
+          const fetched = await skillStore.fetch(skillId);
+          agent.registerSkill(fetched);
+        } catch {
+          console.warn(`Skill "${skillId}" not found locally or remotely`);
+        }
+      }
+    }
+  }
+
+  // 8. Return unified interface
+  return {
+    run: (input: string) => agent.run(input),
+    registerSkill: (skill: SkillDefinition) => agent.registerSkill(skill),
+    registerSkills: (skills: SkillDefinition[]) => agent.registerSkills(skills),
+    fetchSkill: (id: string) => skillStore.fetch(id),
+    getSkills: () => agent.getSkills(),
+    getEngine: () => engine,
+    abort: () => agent.abort(),
+    clearHistory: () => agent.clearHistory(),
+    destroy: async () => {
+      agent.abort();
+      await engine.unload();
+    },
+  };
+}
+
+/** The unified SDK default export */
+const SDK = {
+  createAgent,
+  SimulatedEngine,
+  WebGPUEngine,
+  NanoAgent,
+  SkillStore,
+  ToolBridge,
+  createToolBridge,
+};
+
+export default SDK;
+
+// Re-export key types for convenience
+export type {
+  LLMEngine,
+  LoadOptions,
+  Message,
+  GenerateOptions,
+  GenerateResult,
+  Token,
+  ToolCall,
+  ToolDefinition,
+  ModelInfo,
+} from '../../llm-engine/src/types.js';
+
+export type {
+  NanoAgentConfig,
+  AgentEvent,
+} from '../../nano-agent/src/agent.js';
+
+export type {
+  SkillDefinition,
+  SkillTool,
+  SkillTrigger,
+  SkillParameter,
+} from '../../skill-store/src/types.js';
+
+export type {
+  ToolResult,
+  TransportHandler,
+} from '../../tool-bridge/src/bridge.js';

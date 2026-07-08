@@ -1,0 +1,21 @@
+{
+  "id": "qwen2-0.5b-instruct",
+  "name": "Qwen 2 (0.5B)",
+  "provider": "alibaba",
+  "url": "https://huggingface.co/Qwen/Qwen2-0.5B-Instruct-onnx/resolve/main/",
+  "files": {
+    "model": "qwen2-0.5b-instruct-q4.onnx",
+    "tokenizer": "tokenizer.json",
+    "config": "config.json"
+  },
+  "format": "onnx",
+  "quantization": "int4",
+  "contextLength": 32768,
+  "requiredVRAM": "~0.5 GB",
+  "downloadSize": "~0.6 GB",
+  "chatTemplate": "{% for message in messages %}{% if message.role == 'system' %}<|im_start|>system\n{{ message.content }}<|im_end|>\n{% elif message.role == 'user' %}<|im_start|>user\n{{ message.content }}<|im_end|>\n{% elif message.role == 'assistant' %}<|im_start|>assistant\n{{ message.content }}<|im_end|>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}",
+  "languages": ["en", "zh", "multi"],
+  "capabilities": ["chat", "tool-calling"],
+  "recommended": false,
+  "note": "Smallest viable model — fast but limited reasoning"
+}

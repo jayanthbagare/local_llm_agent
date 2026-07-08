@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local-llm-agent.dev/skill-schema.json",
+  "title": "Skill Definition",
+  "description": "Schema for a Local LLM Agent skill definition",
+  "type": "object",
+  "required": ["id", "name", "version", "tool"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+      "description": "Unique skill identifier (kebab-case)"
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.]+)?$"
+    },
+    "description": { "type": "string" },
+    "author": { "type": "string" },
+    "license": { "type": "string" },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "icon": { "type": "string", "description": "Emoji or icon URL" },
+    "deprecated": { "type": "boolean", "default": false },
+    "replaces": { "type": "string", "description": "ID of skill this replaces" },
+
+    "trigger": {
+      "type": "object",
+      "properties": {
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Keywords that suggest this skill should be used"
+        },
+        "patterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Template patterns with {placeholders} for matching"
+        },
+        "always": {
+          "type": "boolean",
+          "default": false,
+          "description": "Always available without keyword matching"
+        }
+      }
+    },
+
+    "tool": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["rest", "mcp", "function", "browser-api"]
+        },
+        "method": { "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"] },
+        "url": { "type": "string" },
+        "queryParams": { "type": "object" },
+        "headers": { "type": "object" },
+        "body": { "type": "object" },
+        "server": {
+          "type": "object",
+          "properties": {
+            "transport": { "enum": ["sse", "stdio"] },
+            "url": { "type": "string" }
+          }
+        },
+        "toolName": { "type": "string" },
+        "api": { "type": "string" },
+        "execute": { "type": "string", "description": "Sandboxed JS code" },
+
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["type", "description"],
+            "properties": {
+              "type": { "type": "string" },
+              "description": { "type": "string" },
+              "required": { "type": "boolean" },
+              "default": {},
+              "enum": { "type": "array" },
+              "minimum": { "type": "number" },
+              "maximum": { "type": "number" },
+              "maxLength": { "type": "number" },
+              "pattern": { "type": "string" }
+            }
+          }
+        },
+
+        "transform": { "type": "string", "description": "Response transformation expression" },
+        
+        "retry": {
+          "type": "object",
+          "properties": {
+            "maxAttempts": { "type": "number", "default": 0 },
+            "backoff": { "enum": ["fixed", "exponential", "linear"] },
+            "baseDelay": { "type": "number", "default": 1000 }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "rest" } } },
+          "then": { "required": ["method", "url"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "mcp" } } },
+          "then": { "required": ["server", "toolName"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "function" } } },
+          "then": { "required": ["execute"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "browser-api" } } },
+          "then": { "required": ["api"] }
+        }
+      ]
+    },
+
+    "resultTemplate": {
+      "type": "string",
+      "description": "Handlebars/Mustache template for formatting results"
+    },
+
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "network": { "type": "string", "description": "Domain granted network access" },
+          "browser-api": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

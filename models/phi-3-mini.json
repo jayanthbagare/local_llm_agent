@@ -1,0 +1,20 @@
+{
+  "id": "phi-3-mini-4k-instruct",
+  "name": "Phi-3 Mini (4K)",
+  "provider": "microsoft",
+  "url": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/resolve/main/",
+  "files": {
+    "model": "phi3-mini-4k-instruct-cpu-int4-rtn-block-32.onnx",
+    "tokenizer": "tokenizer.json",
+    "config": "config.json"
+  },
+  "format": "onnx",
+  "quantization": "int4",
+  "contextLength": 4096,
+  "requiredVRAM": "~1.8 GB",
+  "downloadSize": "~2.2 GB",
+  "chatTemplate": "{{ bos_token }}{% for message in messages %}{{ '<|' + message.role + '|>' + '\n' + message.content + '<|end|>\n' }}{% endfor %}{% if add_generation_prompt %}{{ '<|assistant|>\n' }}{% endif %}",
+  "languages": ["en"],
+  "capabilities": ["chat", "tool-calling", "code"],
+  "recommended": true
+}

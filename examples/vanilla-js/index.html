@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local LLM Agent - Vanilla JS Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0d1117; color: #c9d1d9; max-width: 800px; margin: 0 auto; padding: 20px; }
+    h1 { color: #58a6ff; margin-bottom: 8px; }
+    .subtitle { color: #8b949e; margin-bottom: 20px; }
+    #chat { border: 1px solid #30363d; border-radius: 8px; height: 400px; overflow-y: auto; padding: 16px; margin-bottom: 16px; background: #161b22; }
+    .msg { margin-bottom: 12px; padding: 8px 12px; border-radius: 8px; max-width: 85%; }
+    .msg.user { background: #1f6feb; color: #fff; margin-left: auto; }
+    .msg.assistant { background: #21262d; }
+    .msg.system { background: #161b22; border: 1px solid #30363d; font-style: italic; color: #8b949e; font-size: 0.9em; }
+    .msg.tool { background: #0d3326; border: 1px solid #238636; font-size: 0.85em; font-family: monospace; white-space: pre-wrap; }
+    .input-row { display: flex; gap: 8px; }
+    #input { flex: 1; padding: 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; color: #c9d1d9; font-size: 14px; }
+    #input:focus { outline: none; border-color: #58a6ff; }
+    button { padding: 12px 24px; background: #238636; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+    button:hover { background: #2ea043; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #status { margin-top: 8px; font-size: 12px; color: #8b949e; }
+    .thinking { animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+  </style>
+</head>
+<body>
+  <h1>🤖 Local LLM Agent</h1>
+  <p class="subtitle">Browser-native LLM with WebGPU • Skills • MCP Tools</p>
+
+  <div id="chat"></div>
+
+  <div class="input-row">
+    <input id="input" type="text" placeholder="Ask anything... (e.g., 'Calculate 256 * 128')" />
+    <button id="send" onclick="send()">Send</button>
+  </div>
+  <div id="status">Initializing agent...</div>
+
+  <script type="module">
+    import { createAgent } from '../packages/sdk/src/index.js';
+
+    const chat = document.getElementById('chat');
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    const status = document.getElementById('status');
+
+    // Create agent with calculator skill
+    const agent = await createAgent({
+      simulated: true, // Use simulated engine for demo
+      customSkills: [
+        {
+          id: 'calculator',
+          name: 'Calculator',
+          version: '1.0.0',
+          description: 'Evaluates mathematical expressions',
+          tool: {
+            type: 'function',
+            execute: 'return eval(params.expression);',
+            parameters: {
+              expression: { type: 'string', description: 'Math expression', required: true },
+            },
+          },
+          resultTemplate: '{{expression}} = {{result}}',
+        },
+      ],
+      systemPrompt: 'You are a helpful, concise assistant running locally. Use the calculator tool for math.',
+    });
+
+    status.textContent = '✅ Agent ready. Type a message!';
+    sendBtn.disabled = false;
+    input.disabled = false;
+
+    function addMessage(role, content) {
+      const div = document.createElement('div');
+      div.className = `msg ${role}`;
+      div.textContent = content;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    window.send = async function() {
+      const text = input.value.trim();
+      if (!text) return;
+
+      addMessage('user', text);
+      input.value = '';
+      sendBtn.disabled = true;
+      status.textContent = 'Thinking...';
+      status.className = 'thinking';
+
+      try {
+        for await (const event of agent.run(text)) {
+          switch (event.type) {
+            case 'thinking':
+              addMessage('assistant', event.content);
+              break;
+            case 'tool_call':
+              addMessage('system', `🔧 Calling tool: ${event.tool}`);
+              break;
+            case 'tool_result':
+              if (event.result.success) {
+                addMessage('tool', JSON.stringify(event.result.data, null, 2));
+              } else {
+                addMessage('system', `❌ Tool error: ${event.result.error}`);
+              }
+              break;
+            case 'done':
+              status.textContent = `✅ Done in ${event.steps} step(s)`;
+              status.className = '';
+              break;
+            case 'error':
+              addMessage('system', `❌ ${event.error}`);
+              break;
+          }
+        }
+      } catch (err) {
+        addMessage('system', `Error: ${err.message}`);
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') window.send();
+    });
+
+    input.focus();
+  </script>
+</body>
+</html>

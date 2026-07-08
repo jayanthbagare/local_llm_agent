@@ -1,0 +1,46 @@
+{
+  "name": "local-llm-agent",
+  "private": true,
+  "description": "Browser-native LLM agent with WebGPU inference, MCP tool calling, and portable skills",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "format": "prettier --write .",
+    "check": "tsc --noEmit",
+    "publish-packages": "changeset publish",
+    "version": "changeset version"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.0",
+    "prettier": "^3.4.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "version": "1.0.0",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jayanthbagare/local_llm_agent.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/jayanthbagare/local_llm_agent/issues"
+  },
+  "homepage": "https://github.com/jayanthbagare/local_llm_agent#readme",
+  "dependencies": {
+    "onnxruntime-web": "^1.27.0"
+  }
+}

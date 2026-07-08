@@ -1,0 +1,93 @@
+# ── File System Skill (Browser) ──
+# Read and write files using the File System Access API.
+id: file-system
+name: "File System Access"
+version: "1.0.0"
+description: "Read, write, and list files in user-selected directories using the browser File System Access API."
+author: "local-llm-agent"
+license: MIT
+tags: [files, fs, storage, browser-api]
+
+trigger:
+  keywords: ["read file", "write file", "list files", "open file", "save file", "directory", "folder"]
+  patterns:
+    - "read the file {path}"
+    - "write {content} to {path}"
+    - "list files in {path}"
+
+tool:
+  type: browser-api
+  api: "file-system"
+
+  parameters:
+    action:
+      type: string
+      description: "File operation"
+      enum: ["read", "write", "list", "exists", "delete"]
+      required: true
+    path:
+      type: string
+      description: "File or directory path"
+      required: true
+    content:
+      type: string
+      description: "Content to write (for write action)"
+    encoding:
+      type: string
+      description: "File encoding"
+      enum: ["utf-8", "base64", "binary"]
+      default: "utf-8"
+
+  execute: |
+    // Uses showDirectoryPicker() or IndexedDB virtual FS
+    switch (params.action) {
+      case 'read': {
+        const content = await virtualFS.readFile(params.path, params.encoding);
+        return {
+          path: params.path,
+          content: content.slice(0, 50000), // truncate large files
+          truncated: content.length > 50000,
+          size: content.length
+        };
+      }
+      case 'write': {
+        await virtualFS.writeFile(params.path, params.content, params.encoding);
+        return { written: true, path: params.path, size: params.content.length };
+      }
+      case 'list': {
+        const files = await virtualFS.listDir(params.path);
+        return {
+          path: params.path,
+          files: files.map(f => ({ name: f.name, size: f.size, type: f.type })),
+          count: files.length
+        };
+      }
+      default:
+        throw new Error(`Unknown action: ${params.action}`);
+    }
+
+  retry:
+    maxAttempts: 0
+
+resultTemplate: |
+  {{#if (eq action "read")}}
+  📄 **{{path}}** ({{size}} bytes{{#if truncated}}, truncated{{/if}})
+  ```
+  {{content}}
+  ```
+  {{/if}}
+  
+  {{#if (eq action "write")}}
+  ✅ Written {{size}} bytes to **{{path}}**
+  {{/if}}
+  
+  {{#if (eq action "list")}}
+  📁 **{{path}}** — {{count}} items
+  {{#each files}}
+  - {{name}} ({{size}} bytes) [{{type}}]
+  {{/each}}
+  {{/if}}
+
+permissions:
+  - browser-api: "file-system"
+  - description: "Read and write files in user-selected directories"
