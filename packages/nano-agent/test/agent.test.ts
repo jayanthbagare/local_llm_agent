@@ -113,6 +113,100 @@ describe('NanoAgent', () => {
     });
   });
 
+  describe('reasoning loop', () => {
+    // A fake engine whose replies are scripted per turn. This lets us drive
+    // the agent's reasoning loop directly (no real model needed).
+    function scriptedEngine(replies: string[]): LLMEngine {
+      let i = 0;
+      return {
+        async load() {},
+        isLoaded: () => true,
+        getModelInfo: () => ({ id: 'x', name: 'x', contextLength: 4096, isLoaded: true, device: 'wasm' }),
+        async generate() {
+          const text = replies[Math.min(i, replies.length - 1)];
+          i++;
+          return {
+            text,
+            tokens: [],
+            finishReason: 'stop' as const,
+            usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          };
+        },
+        async *generateStream() {
+          yield { text: replies[Math.min(i, replies.length - 1)] };
+        },
+        countTokens: () => 1,
+        async unload() {},
+        abort() {},
+      };
+    }
+
+    it('answers directly without a tool when none is needed (FINAL marker)', async () => {
+      const engine = scriptedEngine(['FINAL: The capital of France is Paris.']);
+      const bridge = createToolBridge();
+      const agent = new NanoAgent({ engine, toolBridge: bridge, maxSteps: 3 });
+      agent.registerSkills([calculatorSkill]);
+
+      const events: any[] = [];
+      for await (const event of agent.run('What is the capital of France?')) events.push(event);
+
+      const toolCalls = events.filter((e: any) => e.type === 'tool_call');
+      const done = events.find((e: any) => e.type === 'done');
+      expect(toolCalls.length).toBe(0); // reasoned, no tool needed
+      expect(done.response).toBe('The capital of France is Paris.');
+      expect(done.steps).toBe(1);
+    });
+
+    it('parses a tool call from raw text (engine did not provide toolCalls)', async () => {
+      const engine = scriptedEngine([
+        // Turn 1: model reasons then emits a fenced tool call (no toolCalls field).
+        'I should compute this.\n```json\n{"name":"calculator","arguments":{"expression":"2+2"}}\n```',
+        // Turn 2: final answer after seeing the observation.
+        'FINAL: The answer is 4.',
+      ]);
+      const bridge = createToolBridge();
+      const agent = new NanoAgent({ engine, toolBridge: bridge, maxSteps: 3 });
+      agent.registerSkills([calculatorSkill]);
+
+      const events: any[] = [];
+      for await (const event of agent.run('What is 2+2?')) events.push(event);
+
+      const toolCalls = events.filter((e: any) => e.type === 'tool_call');
+      const toolResults = events.filter((e: any) => e.type === 'tool_result');
+      const done = events.find((e: any) => e.type === 'done');
+      expect(toolCalls.length).toBe(1);
+      expect(toolCalls[0].tool).toBe('calculator');
+      expect(toolResults[0].result.success).toBe(true);
+      expect(done.response).toBe('The answer is 4.');
+    });
+
+    it('parses a bare (unfenced) JSON tool call', async () => {
+      const engine = scriptedEngine([
+        '{"name":"calculator","arguments":{"expression":"6*7"}}',
+        'FINAL: 42',
+      ]);
+      const bridge = createToolBridge();
+      const agent = new NanoAgent({ engine, toolBridge: bridge, maxSteps: 3 });
+      agent.registerSkills([calculatorSkill]);
+
+      const events: any[] = [];
+      for await (const event of agent.run('6*7?')) events.push(event);
+      expect(events.filter((e: any) => e.type === 'tool_call').length).toBe(1);
+    });
+
+    it('ignores tool calls for unknown tools and answers directly', async () => {
+      const engine = scriptedEngine(['```json\n{"name":"nonexistent","arguments":{}}\n```']);
+      const bridge = createToolBridge();
+      const agent = new NanoAgent({ engine, toolBridge: bridge, maxSteps: 3 });
+      agent.registerSkills([calculatorSkill]);
+
+      const events: any[] = [];
+      for await (const event of agent.run('do something')) events.push(event);
+      expect(events.filter((e: any) => e.type === 'tool_call').length).toBe(0);
+      expect(events.find((e: any) => e.type === 'done')).toBeDefined();
+    });
+  });
+
   describe('tool calling', () => {
     it('calls the echo tool when prompted', async () => {
       const engine = new SimulatedEngine();

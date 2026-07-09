@@ -70,7 +70,8 @@ resultTemplate: |
 **Built-in skills** (enable via `createAgent({ skills: [...] })`):
 | Skill id | Type | Description |
 |----------|------|-------------|
-| `web-search` | REST | DuckDuckGo web search (no API key) |
+| `web-search` | REST | Wikipedia-backed web search (no API key) |
+| `wikipedia` | REST | Read a specific Wikipedia page (`find` a keyword) |
 | `http-request` | REST | Call any REST/API endpoint (GET/POST/…) |
 | `file-read` | Browser API | Read a file from a user-granted folder |
 | `file-write` | Browser API | Write a file in the granted folder |

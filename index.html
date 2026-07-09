@@ -34,17 +34,17 @@
     ────────────────────────────────────────────────────────────────── -->
     <script>
       window.AGENT_CONFIG = {
-        model: 'qwen2-0.5b',
+        model: 'qwen2-1.5b',
         local: false,                 // set true to self-host under /models/<repo>/
         localModelPath: '/models/',
         modelUrl: null,               // override repo/folder name if needed
-        systemPrompt: 'You are a concise local assistant. You can use tools: calculator (math), web-search (DuckDuckGo), file-read / file-write / file-glob (a local folder the user picks), http-request (call a REST API), and mcp-call (invoke an MCP server tool). Use a tool when it helps; keep answers short.',
+        systemPrompt: 'You are a careful assistant. Reason step by step. You can use tools: calculator (arithmetic — always use it for any non-trivial math), web-search (Wikipedia-backed search), wikipedia (read a specific Wikipedia page — pass a "find" keyword like "perigee" to get the exact passage), file-read / file-write / file-glob (a local folder the user picks), http-request (call a REST API), and mcp-call (invoke an MCP server tool). Use tools when they help; do the math with the calculator rather than guessing. Give a final answer prefixed with FINAL:.',
         // Built-in skills to enable (see docs/api.md). File tools prompt the
         // user to pick a folder on first use.
-        skills: ['web-search', 'file-read', 'file-write', 'file-glob', 'http-request', 'mcp-call'],
-        maxSteps: 4,
-        maxTokens: 256,
-        temperature: 0.3,
+        skills: ['web-search', 'wikipedia', 'file-read', 'file-write', 'file-glob', 'http-request', 'mcp-call'],
+        maxSteps: 6,
+        maxTokens: 512,
+        temperature: 0.2,
       };
     </script>
 

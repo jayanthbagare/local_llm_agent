@@ -295,6 +295,7 @@ export {
   BUILTIN_SKILLS,
   getBuiltinSkill,
   webSearchSkill,
+  wikipediaSkill,
   httpRequestSkill,
   fileReadSkill,
   fileWriteSkill,

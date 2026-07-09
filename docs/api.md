@@ -333,17 +333,28 @@ type AgentEvent =
 ### Agent Loop (ReAct Pattern)
 
 ```
-User Input → LLM Reasoning → Tool Call? → Execute → Observe → LLM Reasoning → ...
-                                    ↓ No
-                              Final Response
+User Input → LLM reasons → Tool needed? → call tool → observe → reason again → ...
+                                  ↓ No
+                          FINAL: answer
 ```
 
-1. User input is added to conversation
-2. System prompt with tool descriptions is prepended
-3. LLM generates a response (thinking + optional tool call)
-4. If tool call: execute tool, add result to context, go back to step 3
-5. If no tool call: emit final response
-6. Max steps prevents infinite loops
+When tools are registered, the system prompt instructs the model to respond on
+each turn with **either** a tool call **or** a `FINAL:` answer — reasoning first
+and using a tool only if necessary:
+
+1. User input is added to the conversation.
+2. The system prompt is augmented with ReAct instructions + tool descriptions.
+3. The model generates a response. The agent parses it robustly:
+   - a fenced ```json `{ "name", "arguments" }` ``` block, **or**
+   - a bare (unfenced) JSON tool-call object, **or**
+   - the engine's own `toolCalls` if provided.
+4. **Tool call** (for a known tool) → execute it, append the observation, loop.
+5. **No tool call** → the text (minus any `FINAL:` marker) is the final answer.
+6. Tool calls naming an unknown tool are ignored (treated as a direct answer).
+7. `maxSteps` bounds the loop.
+
+This means small local models that don't emit perfect function-call JSON still
+work, and the model won't call a tool when it can just answer.
 
 ---
 
@@ -412,17 +423,22 @@ is needed. Import the definitions directly with `import { BUILTIN_SKILLS } from 
 
 | Skill id | Type | What it does | Parameters |
 |----------|------|--------------|------------|
-| `web-search` | `rest` | DuckDuckGo Instant Answer search; returns structured snippets. | `query` |
+| `web-search` | `rest` | Wikipedia-backed web search; returns the top matching article snippets (CORS-safe, no key). | `query` |
+| `wikipedia` | `rest` | Read a specific Wikipedia article's text; `find` returns the passage around a keyword (e.g. "perigee"). | `title`, `find?`, `maxChars?` |
 | `http-request` | `rest` | Call any REST/API endpoint (GET/POST/PUT/DELETE/PATCH). | `url`, `method?`, `body?` |
 | `file-read` | `browser-api` | Read a file from a user-granted local folder. | `path` |
 | `file-write` | `browser-api` | Write/create a file in the granted folder. | `path`, `content` |
 | `file-glob` | `browser-api` | Find files by glob pattern (`**/*.ts`, `src/*.md`). | `pattern` |
 | `mcp-call` | `mcp` | Invoke a named tool on an MCP server (SSE). | `serverUrl`, `toolName`, `arguments?` |
 
+> `web-search` and `wikipedia` use Wikipedia's `origin=*` API (CORS-safe from the
+> browser). The old DuckDuckGo Instant Answer API returned nothing for general
+> queries, so it was replaced.
+
 ```ts
 const agent = await createAgent({
-  model: 'qwen2-0.5b',
-  skills: ['web-search', 'file-read', 'file-glob', 'http-request', 'mcp-call'],
+  model: 'qwen2-1.5b',
+  skills: ['web-search', 'wikipedia', 'file-read', 'file-glob', 'http-request', 'mcp-call'],
 });
 ```
 
@@ -613,10 +629,13 @@ See `examples/harness-demo/` for a page running manual + event + schedule tasks.
 | Model ID | HuggingFace repo | Context | dtype (WebGPU) |
 |----------|------------------|---------|----------------|
 | `qwen2-0.5b` | `onnx-community/Qwen2.5-0.5B-Instruct` | 32768 | q4f16 (~0.5 GB) |
+| `qwen2-1.5b` | `onnx-community/Qwen2.5-1.5B-Instruct` | 32768 | q4f16 (~1.1 GB) |
 | `phi-3-mini-4k-instruct` | `onnx-community/Phi-3.5-mini-instruct-onnx-web` | 4096 | q4f16 (~2 GB) |
 | `gemma-2-2b` | `onnx-community/gemma-2-2b-it` | 8192 | q4f16 (~1.6 GB) |
 
 Models are fetched on first use and cached in the browser's Cache Storage.
+The demo (`index.html`) defaults to `qwen2-1.5b` for better multi-step reasoning
+and tool use; smaller/larger presets trade speed for capability.
 
 ---
 

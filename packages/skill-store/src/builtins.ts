@@ -6,17 +6,19 @@
 import type { SkillDefinition } from './types';
 
 /**
- * Web search via DuckDuckGo's Instant Answer API (no API key required).
- * Returns structured top results for the model to reason over.
+ * Web search backed by Wikipedia's CORS-enabled search API. Returns real,
+ * usable snippets (the DuckDuckGo Instant Answer API returns almost nothing for
+ * general queries and is not a real search). No API key required.
  */
 export const webSearchSkill: SkillDefinition = {
   id: 'web-search',
   name: 'Web Search',
-  version: '1.2.0',
-  description: 'Search the web using DuckDuckGo and return top results as structured snippets.',
+  version: '2.0.0',
+  description:
+    'Search the web (Wikipedia-backed) and return the most relevant article snippets. Use this to look up facts, definitions, and figures.',
   author: 'local-llm-agent',
   license: 'MIT',
-  tags: ['search', 'web', 'retrieval', 'knowledge'],
+  tags: ['search', 'web', 'retrieval', 'knowledge', 'wikipedia'],
   trigger: {
     keywords: ['search', 'find online', 'look up', 'google', 'web search', 'internet'],
     patterns: ['search for {query}', 'find information about {query}'],
@@ -24,12 +26,14 @@ export const webSearchSkill: SkillDefinition = {
   tool: {
     type: 'rest',
     method: 'GET',
-    url: 'https://api.duckduckgo.com/',
+    url: 'https://en.wikipedia.org/w/api.php',
     queryParams: {
-      q: '{{query}}',
+      action: 'query',
+      list: 'search',
+      srsearch: '{{query}}',
+      srlimit: '5',
       format: 'json',
-      no_html: '1',
-      skip_disambig: '1',
+      origin: '*',
     },
     headers: { Accept: 'application/json' },
     parameters: {
@@ -40,34 +44,109 @@ export const webSearchSkill: SkillDefinition = {
         maxLength: 300,
       },
     },
+    // Produce a single readable text block (the template engine has no loops).
     transform: `
-      const out = [];
-      if (response.AbstractText) {
-        out.push({ title: response.Heading || 'Summary', snippet: response.AbstractText, url: response.AbstractURL || '' });
-      }
-      const topics = response.RelatedTopics || [];
-      for (const r of topics) {
-        if (out.length >= 6) break;
-        if (r.Text && r.FirstURL) {
-          const parts = r.Text.split(' - ');
-          out.push({
-            title: parts.length > 1 ? parts[0] : r.Text.slice(0, 80),
-            snippet: parts.length > 1 ? parts.slice(1).join(' - ') : '',
-            url: r.FirstURL,
-          });
-        }
-      }
-      return { results: out };
+      const hits = (response.query && response.query.search) || [];
+      if (hits.length === 0) return { text: 'No results found.' };
+      const strip = (s) => String(s || '').replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+      const lines = hits.slice(0, 5).map((h, i) =>
+        (i + 1) + '. ' + h.title + ' — ' + strip(h.snippet) +
+        ' (https://en.wikipedia.org/wiki/' + encodeURIComponent(h.title.replace(/ /g, '_')) + ')'
+      );
+      return { text: lines.join('\\n') };
     `,
     retry: { maxAttempts: 2, backoff: 'exponential', baseDelay: 800 },
   },
-  resultTemplate: `Web search results for "{{query}}":
-{{#each results}}
-{{@index}}. {{title}} — {{snippet}} ({{url}})
-{{/each}}`,
+  resultTemplate: `Search results:\n{{text}}`,
   permissions: [
-    { network: 'api.duckduckgo.com' },
-    { description: 'Send search queries to DuckDuckGo to retrieve web results' },
+    { network: 'en.wikipedia.org' },
+    { description: 'Query Wikipedia to retrieve web results' },
+  ],
+};
+
+/**
+ * Read a specific Wikipedia page's plain-text extract (intro + body). Use when
+ * the user names a page ("the Wikipedia page for X") or you need exact figures.
+ * CORS-safe via origin=*.
+ */
+export const wikipediaSkill: SkillDefinition = {
+  id: 'wikipedia',
+  name: 'Wikipedia Lookup',
+  version: '1.0.0',
+  description:
+    'Fetch text from a specific Wikipedia article by title. Pass an optional "find" keyword (e.g. "perigee") to get the passages around that term. Use to read exact facts/figures from a named page (e.g. the Moon, Eliud Kipchoge).',
+  author: 'local-llm-agent',
+  license: 'MIT',
+  tags: ['wikipedia', 'reference', 'retrieval', 'facts'],
+  trigger: {
+    keywords: ['wikipedia', 'wiki page', 'article about'],
+    patterns: ['the wikipedia page for {title}', 'look up {title} on wikipedia'],
+  },
+  tool: {
+    type: 'rest',
+    method: 'GET',
+    url: 'https://en.wikipedia.org/w/api.php',
+    queryParams: {
+      action: 'query',
+      prop: 'extracts',
+      titles: '{{title}}',
+      explaintext: '1',
+      redirects: '1',
+      format: 'json',
+      origin: '*',
+    },
+    headers: { Accept: 'application/json' },
+    parameters: {
+      title: {
+        type: 'string',
+        description: 'Exact Wikipedia article title, e.g. "Moon" or "Eliud Kipchoge"',
+        required: true,
+      },
+      find: {
+        type: 'string',
+        description:
+          'Optional keyword to locate (e.g. "perigee"). If given, returns the passages around each match instead of the article start.',
+      },
+      maxChars: {
+        type: 'number',
+        description: 'Max characters of article text to return (default 4000)',
+      },
+    },
+    transform: `
+      const pages = (response.query && response.query.pages) || {};
+      const page = Object.values(pages)[0] || {};
+      let text = page.extract || '';
+      if (!text) return { title: page.title || '', text: 'Page not found or empty.' };
+      const limit = (args && Number(args.maxChars)) > 0 ? Number(args.maxChars) : 4000;
+      const find = args && args.find ? String(args.find) : '';
+      if (find) {
+        // Return windows of context around each occurrence of the keyword.
+        const lower = text.toLowerCase();
+        const needle = find.toLowerCase();
+        const windows = [];
+        let from = 0;
+        while (windows.length < 5) {
+          const idx = lower.indexOf(needle, from);
+          if (idx < 0) break;
+          const start = Math.max(0, idx - 300);
+          const end = Math.min(text.length, idx + 300);
+          windows.push('…' + text.slice(start, end).trim() + '…');
+          from = idx + needle.length;
+        }
+        if (windows.length > 0) {
+          return { title: page.title || '', text: windows.join('\\n\\n') };
+        }
+        // Keyword not found — fall through to the article start.
+      }
+      const truncated = text.length > limit;
+      return { title: page.title || '', text: text.slice(0, limit) + (truncated ? '\\n…[truncated]' : '') };
+    `,
+    retry: { maxAttempts: 2, backoff: 'exponential', baseDelay: 800 },
+  },
+  resultTemplate: `Wikipedia: {{title}}\n{{text}}`,
+  permissions: [
+    { network: 'en.wikipedia.org' },
+    { description: 'Read Wikipedia article text' },
   ],
 };
 
@@ -246,6 +325,7 @@ export const mcpCallSkill: SkillDefinition = {
 /** All built-in skills, keyed by id. */
 export const BUILTIN_SKILLS: SkillDefinition[] = [
   webSearchSkill,
+  wikipediaSkill,
   httpRequestSkill,
   fileReadSkill,
   fileWriteSkill,

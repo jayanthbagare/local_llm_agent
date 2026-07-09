@@ -119,6 +119,11 @@ const MODEL_PRESETS: Record<
     contextLength: 32768,
     name: 'Qwen2.5 0.5B Instruct',
   },
+  'qwen2-1.5b': {
+    repo: 'onnx-community/Qwen2.5-1.5B-Instruct',
+    contextLength: 32768,
+    name: 'Qwen2.5 1.5B Instruct',
+  },
 };
 
 /** Default model — small enough to download and run quickly in-browser. */

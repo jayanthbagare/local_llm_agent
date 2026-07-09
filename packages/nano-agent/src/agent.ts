@@ -32,18 +32,33 @@ export interface NanoAgentConfig {
   maxContextTokens?: number;
 }
 
-const DEFAULT_SYSTEM_PROMPT = `You are a helpful AI assistant running locally in the browser.
-You have access to tools. When you need to use a tool, respond with a JSON tool call block:
+const DEFAULT_SYSTEM_PROMPT =
+  'You are a helpful AI assistant running locally in the browser.';
 
+/**
+ * ReAct instructions appended to the system prompt WHEN tools are available.
+ * Guides the model to reason first, then either call a tool or give a final
+ * answer. Kept explicit and small so weak local models can follow it.
+ */
+const REACT_INSTRUCTIONS = `You can reason step by step and optionally use tools to help answer.
+
+On each turn, respond in EXACTLY one of two ways:
+
+1. To use a tool, output a single fenced code block with the tool call:
 \`\`\`json
-{
-  "name": "tool_name",
-  "arguments": { "arg1": "value1" }
-}
+{ "name": "<tool_name>", "arguments": { "<arg>": "<value>" } }
 \`\`\`
 
-Think carefully before using tools. Explain your reasoning first, then make the tool call.
-After receiving tool results, synthesize a clear, concise response for the user.`;
+2. To answer the user directly (no tool needed, or after you have tool results),
+   write your answer prefixed with "FINAL:" on its own, e.g.:
+FINAL: <your concise answer here>
+
+Rules:
+- Think briefly about whether a tool is actually needed. If you already know the
+  answer, just give the FINAL answer — do NOT call a tool unnecessarily.
+- Use only the tools listed below, with valid arguments.
+- After a tool runs, you will see its result; then either call another tool or
+  give the FINAL answer.`;
 
 export class NanoAgent {
   private engine: LLMEngine;
@@ -145,20 +160,37 @@ export class NanoAgent {
       }
       tokenSink = [];
 
-      // Emit thinking event
-      yield { type: 'thinking', content: responseText };
+      // ── Decide: reason-only / tool call / final answer ──
+      // Prefer the engine's parsed tool calls, but also robustly parse the raw
+      // text ourselves so weaker models that don't emit perfect fences still work.
+      const toolCalls =
+        result.toolCalls && result.toolCalls.length > 0
+          ? result.toolCalls
+          : tools.length > 0
+            ? this._parseToolCalls(responseText, tools)
+            : [];
 
-      // Check for tool calls
-      if (result.toolCalls && result.toolCalls.length > 0) {
-        for (const toolCall of result.toolCalls) {
+      // Reasoning text shown to the user is the response minus any tool JSON
+      // and the FINAL marker.
+      const reasoning = this._stripControlTokens(responseText);
+      if (reasoning) {
+        yield { type: 'thinking', content: reasoning };
+      }
+
+      // If the model emitted a valid tool call, execute it and loop again.
+      const validCalls = toolCalls.filter((tc) => this.skills.has(tc.name));
+      if (validCalls.length > 0) {
+        for (const toolCall of validCalls) {
           yield { type: 'tool_call', tool: toolCall.name, args: toolCall.arguments };
 
-          // Execute tool
           const toolResult = await this._executeTool(toolCall);
           yield { type: 'tool_result', tool: toolCall.name, result: toolResult };
 
-          // Add tool result to messages
           const formattedResult = this._formatToolResult(toolCall.name, toolResult);
+          this.messages.push({
+            role: 'assistant',
+            content: reasoning || `Calling ${toolCall.name}`,
+          });
           this.messages.push({
             role: 'tool',
             content: formattedResult,
@@ -166,13 +198,14 @@ export class NanoAgent {
             toolCallId: toolCall.id,
           });
         }
-        // Continue loop for next reasoning step
+        // Continue the reasoning loop with the observation(s) in context.
         continue;
       }
 
-      // No tool calls — this is the final response
-      this.messages.push({ role: 'assistant', content: responseText });
-      yield { type: 'done', response: responseText, steps };
+      // No tool call → this is the final answer. Strip a leading "FINAL:" marker.
+      const finalText = this._extractFinal(responseText) || reasoning || responseText.trim();
+      this.messages.push({ role: 'assistant', content: finalText });
+      yield { type: 'done', response: finalText, steps };
       return;
     }
 
@@ -197,6 +230,7 @@ export class NanoAgent {
     let prompt = this.config.systemPrompt;
 
     if (tools.length > 0) {
+      prompt += '\n\n' + REACT_INSTRUCTIONS;
       prompt += '\n\n## Available Tools\n\n';
       for (const tool of tools) {
         prompt += `### ${tool.function.name}\n`;
@@ -206,6 +240,101 @@ export class NanoAgent {
     }
 
     return prompt;
+  }
+
+  /**
+   * Robustly parse tool calls from raw model output. Handles:
+   *  - fenced ```json { "name": ..., "arguments": ... } ``` blocks
+   *  - bare JSON objects containing a name/arguments (no fence)
+   * Only returns calls whose name matches a known tool.
+   */
+  private _parseToolCalls(text: string, tools: ToolDefinition[]): ToolCall[] {
+    const known = new Set(tools.map((t) => t.function.name));
+    const calls: ToolCall[] = [];
+    const seen = new Set<string>();
+
+    const consider = (raw: string) => {
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      const name = (parsed.name || parsed.tool || parsed.function) as string | undefined;
+      if (!name || !known.has(name)) return;
+      const args = (parsed.arguments || parsed.args || parsed.parameters || {}) as Record<
+        string,
+        unknown
+      >;
+      const key = name + JSON.stringify(args);
+      if (seen.has(key)) return;
+      seen.add(key);
+      calls.push({
+        id: `call_${Math.random().toString(36).slice(2, 9)}`,
+        name,
+        arguments: args,
+      });
+    };
+
+    // 1) Fenced blocks.
+    const fence = /```(?:json|tool_call)?\s*\n?(\{[\s\S]*?\})\s*```/g;
+    let m: RegExpExecArray | null;
+    let foundFence = false;
+    while ((m = fence.exec(text)) !== null) {
+      foundFence = true;
+      consider(m[1]);
+    }
+
+    // 2) If no fenced call parsed, scan for bare balanced JSON objects that
+    //    look like a tool call ("name" + arguments/args/parameters).
+    if (!foundFence && calls.length === 0) {
+      for (const candidate of this._extractJsonObjects(text)) {
+        if (/"(name|tool|function)"\s*:/.test(candidate)) consider(candidate);
+      }
+    }
+
+    return calls;
+  }
+
+  /** Extract top-level balanced {...} JSON substrings from text. */
+  private _extractJsonObjects(text: string): string[] {
+    const objects: string[] = [];
+    let depth = 0;
+    let start = -1;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (c === '{') {
+        if (depth === 0) start = i;
+        depth++;
+      } else if (c === '}') {
+        if (depth > 0) {
+          depth--;
+          if (depth === 0 && start >= 0) {
+            objects.push(text.slice(start, i + 1));
+            start = -1;
+          }
+        }
+      }
+    }
+    return objects;
+  }
+
+  /** Remove tool-call JSON blocks and the FINAL marker for display. */
+  private _stripControlTokens(text: string): string {
+    let out = text.replace(/```(?:json|tool_call)?\s*\n?\{[\s\S]*?\}\s*```/g, '').trim();
+    // Drop a bare leading JSON tool-call object if present.
+    out = out.replace(/^\s*\{[\s\S]*?"(name|tool|function)"[\s\S]*?\}\s*/i, '').trim();
+    // Remove a leading FINAL: marker but keep the answer.
+    out = out.replace(/^\s*FINAL\s*:\s*/i, '').trim();
+    return out;
+  }
+
+  /** If the text contains a FINAL: answer, return just that answer. */
+  private _extractFinal(text: string): string | null {
+    const m = text.match(/FINAL\s*:\s*([\s\S]+)/i);
+    if (!m) return null;
+    // Also strip any trailing fenced blocks from the final answer.
+    return m[1].replace(/```[\s\S]*?```/g, '').trim() || null;
   }
 
   private _buildToolDefinitions(): ToolDefinition[] {
