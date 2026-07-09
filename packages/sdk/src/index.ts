@@ -6,6 +6,8 @@ import { SimulatedEngine, WebGPUEngine, TransformersEngine } from '@local-llm-ag
 import { NanoAgent } from '@local-llm-agent/nano-agent';
 import { SkillStore } from '@local-llm-agent/skill-store';
 import { BUILTIN_SKILLS } from '@local-llm-agent/skill-store';
+import { AgentHarness } from '@local-llm-agent/harness';
+import type { AgentFile, HarnessOptions } from '@local-llm-agent/harness';
 import { ToolBridge, createToolBridge } from '@local-llm-agent/tool-bridge';
 import type { LLMEngine, LoadOptions } from '@local-llm-agent/llm-engine';
 import type { NanoAgentConfig, AgentEvent } from '@local-llm-agent/nano-agent';
@@ -177,9 +179,80 @@ export async function createAgent(options: CreateAgentOptions = {}): Promise<Age
   };
 }
 
-/** The unified SDK default export */
+/** Options for createAgentHarness(). */
+export interface CreateHarnessOptions
+  extends Partial<Pick<HarnessOptions, 'concurrency' | 'defaultSystemPrompt' | 'triggerDeps' | 'extraSkills'>> {
+  /** Model id to load into the shared engine (e.g. 'qwen2-0.5b'). */
+  model?: string;
+  /** Model load options. */
+  loadOptions?: Partial<LoadOptions>;
+  /** Use the simulated engine (no WebGPU / no download). */
+  simulated?: boolean;
+  /** Provide a pre-built engine (skips creation/loading). */
+  engine?: LLMEngine;
+  /** Agent files (tasks) to register up front. */
+  tasks?: AgentFile[];
+  /** Also auto-discover <script type="application/agent+json"> tasks (browser). */
+  discover?: boolean;
+  /** Start (arm) triggers immediately (default true). */
+  autoStart?: boolean;
+}
+
+/**
+ * Create an event-driven multi-task harness backed by one shared, loaded
+ * engine. Tasks can be passed inline, and/or discovered from the page.
+ *
+ * @example
+ * ```ts
+ * const harness = await createAgentHarness({
+ *   model: 'qwen2-0.5b',
+ *   discover: true,        // read <script type="application/agent+json"> blocks
+ * });
+ * harness.on((e) => console.log(e));
+ * ```
+ */
+export async function createAgentHarness(options: CreateHarnessOptions = {}): Promise<AgentHarness> {
+  // 1. Create + load a shared engine (same policy as createAgent).
+  let engine: LLMEngine;
+  if (options.engine) {
+    engine = options.engine;
+  } else if (options.simulated) {
+    engine = new SimulatedEngine();
+  } else {
+    engine = typeof navigator !== 'undefined' ? new TransformersEngine() : new SimulatedEngine();
+  }
+  if (!engine.isLoaded() && (options.model || options.loadOptions)) {
+    await engine.load({ modelId: options.model || 'qwen2-0.5b', ...options.loadOptions });
+  } else if (!engine.isLoaded() && !options.engine) {
+    await engine.load({ modelId: 'simulated' });
+  }
+
+  // 2. Build the harness.
+  const harness = new AgentHarness({
+    engine,
+    concurrency: options.concurrency,
+    defaultSystemPrompt: options.defaultSystemPrompt,
+    triggerDeps: options.triggerDeps,
+    extraSkills: options.extraSkills,
+  });
+
+  // 3. Register tasks (inline + discovered).
+  const files: AgentFile[] = [...(options.tasks ?? [])];
+  if (options.discover) {
+    const { discoverAgentFiles } = await import('@local-llm-agent/harness');
+    files.push(...discoverAgentFiles());
+  }
+  for (const file of files) harness.addTask(file);
+
+  // 4. Arm triggers.
+  if (options.autoStart !== false) harness.start();
+
+  return harness;
+}
 const SDK = {
   createAgent,
+  createAgentHarness,
+  AgentHarness,
   SimulatedEngine,
   WebGPUEngine,
   TransformersEngine,
@@ -191,6 +264,31 @@ const SDK = {
 };
 
 export default SDK;
+
+// Re-export the harness API for multi-task, event-driven agents.
+export {
+  AgentHarness,
+  createHarness,
+  parseAgentFile,
+  normalizeAgentFile,
+  validateAgentFile,
+  discoverAgentFiles,
+  fetchAgentFile,
+  createTrigger,
+  renderTemplate,
+} from '@local-llm-agent/harness';
+
+export type {
+  AgentFile,
+  Trigger,
+  TriggerType,
+  ManualTrigger,
+  EventTrigger,
+  ScheduleTrigger,
+  ConcurrencyPolicy,
+  HarnessEvent,
+  HarnessOptions,
+} from '@local-llm-agent/harness';
 
 // Re-export built-in skills so apps can inspect / customize them.
 export {

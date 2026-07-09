@@ -7,3 +7,13 @@ dist/
 .DS_Store
 *.log
 downloaded_models/
+
+# Stale compiled output that used to live next to sources (build now targets dist/)
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
+packages/*/test/**/*.js
+packages/*/test/**/*.js.map
+packages/*/test/**/*.d.ts
+packages/*/test/**/*.d.ts.map

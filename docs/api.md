@@ -7,7 +7,8 @@
     ├── llm-engine    Real WebGPU/WASM inference (transformers.js)
     ├── nano-agent    ReAct agent loop (~5KB gzipped)
     ├── skill-store   Skill registry + IndexedDB cache
-    └── tool-bridge   REST, MCP, sandboxed function execution
+    ├── tool-bridge   REST, MCP, sandboxed function execution
+    └── harness       Multi-task, event-driven agent orchestration
 ```
 
 ---
@@ -454,7 +455,10 @@ open the picker itself (which may be blocked without an active gesture).
 
 ## Skill File Reference
 
-See `skills/web-search.skill.yaml`, `skills/calculator.skill.yaml`, etc. for complete examples. Key sections:
+See `skills/skill-schema.json` for the full JSON Schema, and
+`packages/skill-store/src/builtins.ts` for the bundled skill definitions
+(`web-search`, `http-request`, `file-read`/`write`/`glob`, `mcp-call`). A skill
+has these key sections:
 
 ```yaml
 id: my-skill
@@ -476,6 +480,131 @@ resultTemplate: "Output: {{key}}"
 permissions:
   - network: "api.example.com"
 ```
+
+---
+
+## Package: `@local-llm-agent/harness`
+
+Run **multiple tasks** on one page, each with its own trigger, all sharing a
+single loaded model. A task is described by an **Agent File** (JSON).
+
+### Agent File
+
+```jsonc
+{
+  "id": "price-watcher",           // kebab-case, unique per page
+  "name": "Price watcher",
+  "systemPrompt": "You watch prices and summarize changes.",
+  "skills": ["web-search", "http-request"],  // built-in skill ids
+  "customSkills": [ /* inline SkillDefinition[] */ ],
+  "maxSteps": 4,
+  "maxTokens": 200,
+  "temperature": 0.3,
+  "trigger": { /* one of the three below */ },
+  "enabled": true
+}
+```
+
+### Triggers
+
+**Manual** — runs only when you call `harness.runTask(id, prompt?)`:
+```jsonc
+{ "type": "manual", "promptTemplate": "optional default prompt" }
+```
+
+**Event** — runs on a DOM/custom event (debounced), capturing `{{value}}`:
+```jsonc
+{
+  "type": "event",
+  "target": "#price",          // CSS selector, or 'document' / 'window'
+  "on": "change",              // 'input' | 'click' | 'submit' | 'custom:my-event'
+  "debounceMs": 300,
+  "promptTemplate": "Field changed to {{value}}. Summarize."
+}
+```
+`{{value}}` resolves to the target's `value` / `checked` / `textContent`;
+`{{detail}}` to a CustomEvent's `detail` (JSON).
+
+**Schedule** — runs on an interval and/or cron, **while the tab is open**:
+```jsonc
+{
+  "type": "schedule",
+  "interval": "30s",           // '30s' | '5m' | '1h' | '2h30m' | ms number
+  "cron": "0 */6 * * *",       // optional 5-field cron (min hour dom month dow)
+  "pauseWhenHidden": true,     // skip ticks while the tab is hidden (default true)
+  "promptTemplate": "Do the periodic check."
+}
+```
+> Cron here is *soft*: it fires only while the page is open. True background
+> scheduling needs a Service Worker or a server (out of scope).
+
+### Authoring tasks in HTML
+
+Declare tasks inline; the harness auto-discovers them:
+```html
+<script type="application/agent+json">
+{ "id": "chat", "systemPrompt": "...", "trigger": { "type": "manual" } }
+</script>
+```
+
+### `createAgentHarness(options)`
+
+```ts
+import { createAgentHarness } from '@local-llm-agent/sdk';
+
+const harness = await createAgentHarness({
+  model: 'qwen2-0.5b',       // shared engine, loaded once
+  discover: true,            // read <script type="application/agent+json"> blocks
+  tasks: [/* AgentFile[] */],// and/or pass tasks inline
+  concurrency: 'queue',      // 'queue' | 'skip' | 'restart'
+  autoStart: true,           // arm triggers immediately
+});
+
+harness.on((e) => {
+  // e.type: 'task_triggered' | 'task_agent' | 'task_done' | 'task_skipped' | 'task_error'
+  // every event carries e.taskId
+});
+
+harness.runTask('chat', 'What is 2+2?');   // manual run
+harness.setFileSystemRoot(dirHandle);        // authorize file tools for all tasks
+harness.stop();                              // disarm triggers, abort runs
+```
+
+### Concurrency
+
+A single engine can only generate one stream at a time, so **all runs are
+serialized** globally. Per-task, the `concurrency` policy decides what happens
+when a task is re-triggered while it's still running:
+
+| Policy | Behavior |
+|--------|----------|
+| `queue` (default) | Runs the new request after the current one finishes |
+| `skip` | Drops the new request (emits `task_skipped`) |
+| `restart` | Aborts the current run and starts the new one |
+
+### `AgentHarness` API
+
+```ts
+class AgentHarness {
+  addTask(file: AgentFile): void;
+  listTasks(): string[];
+  runTask(id: string, prompt?: string): void;
+  setFileSystemRoot(handle: unknown): void;
+  start(): void;   // arm all enabled triggers
+  stop(): void;    // disarm + abort
+  on(cb: (e: HarnessEvent) => void): () => void;  // returns unsubscribe
+}
+```
+
+### Helpers
+
+```ts
+import {
+  parseAgentFile, validateAgentFile, discoverAgentFiles, fetchAgentFile,
+} from '@local-llm-agent/sdk';
+```
+
+See `examples/harness-demo/` for a page running manual + event + schedule tasks.
 
 ---
 

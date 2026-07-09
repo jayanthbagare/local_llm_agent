@@ -7,7 +7,7 @@ import {
   useAgent,
   useAgentResponse,
   useAgentTools,
-} from '../../../packages/react/src/index.js';
+} from '@local-llm-agent/react';
 
 // ── Chat UI Component ──
 

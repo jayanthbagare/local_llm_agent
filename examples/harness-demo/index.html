@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local LLM Agent — Multi-task Harness Demo</title>
+
+    <script type="importmap">
+    {
+      "imports": {
+        "@huggingface/transformers": "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/dist/transformers.min.js"
+      }
+    }
+    </script>
+
+    <!--
+      ── Agent files ──
+      Each <script type="application/agent+json"> block declares one task with a
+      trigger. The harness auto-discovers them (createAgentHarness({discover:true})).
+      Multiple skill/agent files can be associated with a single page.
+    -->
+
+    <!-- 1) MANUAL: runs when the user submits the prompt box. -->
+    <script type="application/agent+json">
+    {
+      "id": "chat",
+      "name": "Manual chat",
+      "systemPrompt": "You are a concise assistant. Answer briefly. Use the calculator for math.",
+      "skills": ["web-search"],
+      "maxSteps": 3,
+      "maxTokens": 200,
+      "temperature": 0.3,
+      "trigger": { "type": "manual" }
+    }
+    </script>
+
+    <!-- 2) EVENT: runs whenever the watched input's value changes (debounced). -->
+    <script type="application/agent+json">
+    {
+      "id": "field-watcher",
+      "name": "Field change watcher",
+      "systemPrompt": "You react to a form field changing. Briefly comment on the new value in one sentence.",
+      "maxSteps": 1,
+      "maxTokens": 120,
+      "temperature": 0.4,
+      "trigger": {
+        "type": "event",
+        "target": "#watched",
+        "on": "change",
+        "debounceMs": 400,
+        "promptTemplate": "The field value just changed to: {{value}}. Comment briefly."
+      }
+    }
+    </script>
+
+    <!-- 3) SCHEDULE: runs every 30 seconds while the tab is open. -->
+    <script type="application/agent+json">
+    {
+      "id": "heartbeat",
+      "name": "Every 30s",
+      "systemPrompt": "You produce a one-line status note.",
+      "maxSteps": 1,
+      "maxTokens": 60,
+      "temperature": 0.5,
+      "trigger": {
+        "type": "schedule",
+        "interval": "30s",
+        "pauseWhenHidden": true,
+        "promptTemplate": "Write a one-line friendly status update for the current moment."
+      }
+    }
+    </script>
+
+    <style>
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, sans-serif; background: #0d1117; color: #c9d1d9; max-width: 900px; margin: 0 auto; padding: 20px; }
+        h1 { color: #58a6ff; font-size: 1.5rem; }
+        .subtitle { color: #8b949e; margin-bottom: 16px; font-size: .9rem; }
+        .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+        label { color: #8b949e; font-size: .85rem; }
+        input[type=text] { flex: 1; min-width: 200px; padding: 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; color: #c9d1d9; }
+        input:focus { outline: none; border-color: #58a6ff; }
+        button { padding: 10px 18px; background: #238636; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        button:hover:not(:disabled) { background: #2ea043; }
+        button:disabled { opacity: .5; cursor: not-allowed; }
+        #log { border: 1px solid #30363d; border-radius: 8px; height: 420px; overflow-y: auto; padding: 12px; background: #161b22; margin-top: 12px; }
+        .entry { margin-bottom: 8px; padding: 8px 10px; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; font-size: .9rem; }
+        .task-chat { border-left: 3px solid #1f6feb; background: #10192b; }
+        .task-field-watcher { border-left: 3px solid #d29922; background: #201a10; }
+        .task-heartbeat { border-left: 3px solid #8957e5; background: #1a1226; }
+        .meta { color: #8b949e; font-size: .75rem; }
+        .tag { display: inline-block; font-size: .7rem; padding: 1px 6px; border-radius: 6px; background: #30363d; margin-right: 6px; }
+        #status { margin-top: 8px; font-size: 12px; color: #8b949e; min-height: 16px; }
+        progress { width: 100%; height: 8px; margin-top: 8px; }
+        fieldset { border: 1px solid #30363d; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+        legend { color: #58a6ff; padding: 0 6px; font-size: .85rem; }
+    </style>
+</head>
+<body>
+    <h1>🤖 Multi-task Agent Harness</h1>
+    <p class="subtitle">
+        One page, three tasks, three trigger types — all sharing one local model.
+        Manual (prompt), Event (field change), Schedule (every 30s).
+    </p>
+
+    <fieldset>
+        <legend>Manual task — "chat"</legend>
+        <div class="row">
+            <input id="prompt" type="text" placeholder="Ask something… (runs the 'chat' task)" disabled />
+            <button id="send" disabled>Run</button>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Event task — "field-watcher" (fires on change)</legend>
+        <div class="row">
+            <label for="watched">Watched field:</label>
+            <input id="watched" type="text" placeholder="Type then click away / press Enter…" disabled />
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Scheduled task — "heartbeat" (every 30s while tab is visible)</legend>
+        <div class="row">
+            <button id="toggleSchedule" disabled>Pause harness</button>
+            <span class="meta">Runs automatically; watch the log.</span>
+        </div>
+    </fieldset>
+
+    <div id="status">Loading model…</div>
+    <progress id="progress" value="0" max="100" hidden></progress>
+    <div id="log"></div>
+
+    <script type="module">
+        import { createAgentHarness } from '../../dist-browser/sdk.js';
+
+        const logEl = document.getElementById('log');
+        const statusEl = document.getElementById('status');
+        const progress = document.getElementById('progress');
+        const promptInput = document.getElementById('prompt');
+        const sendBtn = document.getElementById('send');
+        const toggleBtn = document.getElementById('toggleSchedule');
+
+        // Track a streaming bubble per task so tokens append to the right entry.
+        const bubbles = {};
+
+        function log(taskId, text, cls = '') {
+            const div = document.createElement('div');
+            div.className = `entry task-${taskId} ${cls}`;
+            div.innerHTML = `<span class="tag">${taskId}</span>`;
+            const span = document.createElement('span');
+            span.textContent = text;
+            div.appendChild(span);
+            logEl.appendChild(div);
+            logEl.scrollTop = logEl.scrollHeight;
+            return span;
+        }
+
+        let harness = null;
+        let running = true;
+
+        try {
+            harness = await createAgentHarness({
+                model: 'qwen2-0.5b',
+                discover: true,        // read the <script type="application/agent+json"> tasks
+                concurrency: 'queue',  // shared engine → serialize; queue re-triggers
+                autoStart: true,
+                loadOptions: {
+                    device: 'auto',
+                    onProgress: (p) => {
+                        if (p.totalBytes) progress.value = Math.round((p.bytesDownloaded / p.totalBytes) * 100);
+                        statusEl.textContent = p.message || p.status;
+                    },
+                },
+            });
+
+            progress.hidden = true;
+            statusEl.textContent = `Ready — tasks: ${harness.listTasks().join(', ')}`;
+            promptInput.disabled = false;
+            sendBtn.disabled = false;
+            document.getElementById('watched').disabled = false;
+            toggleBtn.disabled = false;
+
+            // Unified event stream from all tasks.
+            harness.on((e) => {
+                switch (e.type) {
+                    case 'task_triggered':
+                        bubbles[e.taskId] = null;
+                        log(e.taskId, `▶ triggered (${e.reason})${e.prompt ? ': ' + e.prompt : ''}`, 'meta');
+                        break;
+                    case 'task_agent': {
+                        const ev = e.event;
+                        if (ev.type === 'token') {
+                            if (!bubbles[e.taskId]) bubbles[e.taskId] = log(e.taskId, '');
+                            bubbles[e.taskId].textContent += ev.token;
+                            logEl.scrollTop = logEl.scrollHeight;
+                        } else if (ev.type === 'thinking') {
+                            if (!bubbles[e.taskId]) bubbles[e.taskId] = log(e.taskId, '');
+                            bubbles[e.taskId].textContent = ev.content;
+                            bubbles[e.taskId] = null;
+                        } else if (ev.type === 'tool_call') {
+                            log(e.taskId, `🔧 ${ev.tool}(${JSON.stringify(ev.args)})`, 'meta');
+                        } else if (ev.type === 'tool_result') {
+                            log(e.taskId, ev.result.success ? `📋 ${JSON.stringify(ev.result.data)}` : `❌ ${ev.result.error}`, 'meta');
+                        }
+                        break;
+                    }
+                    case 'task_done':
+                        log(e.taskId, `✅ done in ${e.steps} step(s), ${e.durationMs}ms`, 'meta');
+                        break;
+                    case 'task_skipped':
+                        log(e.taskId, `⏭ skipped: ${e.reason}`, 'meta');
+                        break;
+                    case 'task_error':
+                        log(e.taskId, `❌ ${e.error}`, 'meta');
+                        break;
+                }
+            });
+
+            // Manual task: wire the prompt box to runTask('chat').
+            const runChat = () => {
+                const text = promptInput.value.trim();
+                if (!text) return;
+                promptInput.value = '';
+                harness.runTask('chat', text);
+            };
+            sendBtn.addEventListener('click', runChat);
+            promptInput.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') runChat(); });
+
+            // Pause/resume the whole harness (stops schedules + event listeners).
+            toggleBtn.addEventListener('click', () => {
+                running = !running;
+                if (running) { harness.start(); toggleBtn.textContent = 'Pause harness'; }
+                else { harness.stop(); toggleBtn.textContent = 'Resume harness'; }
+            });
+        } catch (err) {
+            progress.hidden = true;
+            statusEl.textContent = '';
+            log('system', `❌ Failed to start: ${err.message}`);
+            console.error(err);
+        }
+    </script>
+</body>
+</html>

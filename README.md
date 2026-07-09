@@ -42,15 +42,17 @@ for await (const event of agent.run('What is 256 * 128?')) {
     ├── @local-llm-agent/llm-engine    Real WebGPU/WASM inference (transformers.js)
     ├── @local-llm-agent/nano-agent    ReAct agent loop (~5KB gzipped)
     ├── @local-llm-agent/skill-store   Skill registry + IndexedDB cache
-    └── @local-llm-agent/tool-bridge   REST, MCP, sandboxed function execution
+    ├── @local-llm-agent/tool-bridge   REST, MCP, sandboxed function execution
+    └── @local-llm-agent/harness       Multi-task, event-driven orchestration
 ```
 
 ## Skill Files
 
-Skills are portable YAML definitions. Bundle them or fetch from a CDN:
+Skills are portable definitions (bundled in `packages/skill-store/src/builtins.ts`,
+or authored as JSON/YAML and fetched from a CDN). The shape:
 
 ```yaml
-# skills/web-search.skill.yaml
+# a web-search skill definition
 id: web-search
 version: "1.2.0"
 tool:
@@ -167,6 +169,35 @@ window.AGENT_CONFIG = {
   in `index.html`; everything else is bundled into `dist-browser/sdk.js`.
 - Requires **Chrome/Edge 113+** for WebGPU. Smaller models (e.g. Qwen2.5-0.5B) also
   run on the WASM CPU fallback, just slower — the page tells you which one is active.
+
+
+## Multi-task harness (event-driven agents)
+
+A single page can declare **many tasks**, each with its own trigger, all sharing
+one loaded model. Triggers: **manual** (prompt/API), **event** (a DOM value
+change, click, submit, or custom event), and **schedule** (interval or a soft
+cron that runs while the tab is open).
+
+Declare tasks inline and let the harness discover them:
+
+```html
+<script type="application/agent+json">
+{ "id": "field-watcher", "systemPrompt": "React to changes.",
+  "trigger": { "type": "event", "target": "#price", "on": "change",
+               "promptTemplate": "Price changed to {{value}}. Summarize." } }
+</script>
+```
+
+```ts
+import { createAgentHarness } from '@local-llm-agent/sdk';
+
+const harness = await createAgentHarness({ model: 'qwen2-0.5b', discover: true });
+harness.on((e) => console.log(e.type, e.taskId));
+harness.runTask('chat', 'Hello');   // manual run
+```
+
+See `examples/harness-demo/` (manual + event + schedule on one page) and
+`docs/api.md` → **@local-llm-agent/harness** for the full API.
 
 
 ## License

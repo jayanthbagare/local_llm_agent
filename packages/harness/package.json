@@ -1,5 +1,5 @@
 {
-  "name": "@local-llm-agent/sdk",
+  "name": "@local-llm-agent/harness",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -8,7 +8,6 @@
   "files": ["dist"],
   "scripts": { "build": "tsc", "test": "vitest run", "test:watch": "vitest" },
   "dependencies": {
-    "@local-llm-agent/harness": "workspace:*",
     "@local-llm-agent/llm-engine": "workspace:*",
     "@local-llm-agent/nano-agent": "workspace:*",
     "@local-llm-agent/skill-store": "workspace:*",

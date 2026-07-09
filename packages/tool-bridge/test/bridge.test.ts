@@ -213,13 +213,13 @@ describe('MCPTransport', () => {
   it('rejects missing server URL', async () => {
     await expect(
       transport.execute({ type: 'mcp', toolName: 'test' }, {}),
-    ).rejects.toThrow('requires server URL');
+    ).rejects.toThrow('requires a server URL');
   });
 
   it('rejects missing toolName', async () => {
     await expect(
       transport.execute({ type: 'mcp', server: { transport: 'sse', url: 'http://localhost' } }, {}),
-    ).rejects.toThrow('requires toolName');
+    ).rejects.toThrow('requires a toolName');
   });
 });
 
