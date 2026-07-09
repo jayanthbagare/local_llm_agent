@@ -5,7 +5,6 @@ import React, {
   createContext,
   useContext,
   useState,
-  useRef,
   useCallback,
   useEffect,
   useMemo,
@@ -19,8 +18,8 @@ import type {
   AgentEvent,
   SkillDefinition,
   Message,
-} from '../../sdk/src/index.js';
-import { createAgent } from '../../sdk/src/index.js';
+} from '@local-llm-agent/sdk';
+import { createAgent } from '@local-llm-agent/sdk';
 
 // ── Context ──
 
@@ -55,8 +54,6 @@ export function AgentProvider({ children, autoInit = true, ...options }: AgentPr
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [skills, setSkills] = useState<SkillDefinition[]>([]);
-  const abortRef = useRef<() => void>(() => {});
-
   // Initialize agent
   useEffect(() => {
     if (!autoInit) return;
@@ -155,7 +152,13 @@ export function useAgent(): AgentContextValue {
 /** Hook that returns only the latest response */
 export function useAgentResponse(): { response: string | null; isRunning: boolean } {
   const { events, isRunning } = useAgent();
-  const doneEvent = events.findLast?.((e) => e.type === 'done') || events[events.length - 1];
+  let doneEvent: AgentEvent | undefined;
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].type === 'done') {
+      doneEvent = events[i];
+      break;
+    }
+  }
   return {
     response: doneEvent?.type === 'done' ? doneEvent.response : null,
     isRunning,

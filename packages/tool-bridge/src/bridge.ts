@@ -2,7 +2,7 @@
 // Executes tool calls from the agent.
 // Supports REST APIs, sandboxed JS functions, browser APIs, and MCP servers.
 
-import type { SkillTool } from '../../skill-store/src/types.js';
+import type { SkillTool } from '@local-llm-agent/skill-store';
 
 /** Arguments passed to a tool */
 export type ToolArgs = Record<string, unknown>;

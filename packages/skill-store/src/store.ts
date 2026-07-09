@@ -135,12 +135,12 @@ export class SkillStore {
     if (typeof indexedDB !== 'undefined') {
       try {
         // Try to load from IndexedDB
-        const { get, set } = await this._getIDB();
+        const { get } = await this._getIDB();
         const keys = await this._getIDBKeys();
         if (keys) {
           for (const key of keys) {
             const entry = await get(key);
-            if (entry) this.cache.set(key as string, entry);
+            if (entry) this.cache.set(key as string, entry as CacheEntry);
           }
         }
       } catch {
@@ -256,6 +256,9 @@ export class SkillStore {
       this.manifest = await resp.json();
     }
 
+    if (!this.manifest) {
+      throw new Error('Manifest failed to load');
+    }
     const entry = this.manifest.skills[id];
     if (!entry) {
       throw new Error(`Skill "${id}" not found in registry`);
@@ -277,12 +280,12 @@ export class SkillStore {
     return JSON.parse(text);
   }
 
-  private _parseYAML(text: string): SkillDefinition {
+  private async _parseYAML(text: string): Promise<SkillDefinition> {
     // Simple YAML parser for skill definitions
     // Handles the subset used in skill files — not a full YAML parser
     try {
       // Try js-yaml
-      const yaml = require('js-yaml');
+      const yaml = await import('js-yaml');
       return yaml.load(text) as SkillDefinition;
     } catch {
       // Fallback: basic YAML-like parsing
@@ -294,7 +297,6 @@ export class SkillStore {
     // Minimal YAML parser for skills (handles our skill file format)
     const result: Record<string, unknown> = {};
     let currentKey = '';
-    let currentIndent = 0;
     const lines = text.split('\n');
 
     for (const line of lines) {
@@ -311,7 +313,6 @@ export class SkillStore {
           } else {
             result[currentKey] = {};
           }
-          currentIndent = 0;
         }
       } else if (indent > 0 && currentKey) {
         const trimmed = line.trim();

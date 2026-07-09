@@ -2,10 +2,10 @@
 // Lightweight ReAct (Reasoning + Acting) agent loop.
 // Orchestrates: user input → LLM reasoning → tool calls → observation → final answer.
 
-import type { LLMEngine, Message, GenerateOptions, ToolDefinition, ToolCall } from '../../llm-engine/src/types.js';
-import { countTokens, countMessageTokens } from '../../llm-engine/src/tokenizer.js';
-import type { SkillDefinition, SkillParameter } from '../../skill-store/src/types.js';
-import type { ToolBridge, ToolResult } from '../../tool-bridge/src/bridge.js';
+import type { LLMEngine, Message, GenerateOptions, ToolDefinition, ToolCall } from '@local-llm-agent/llm-engine';
+import { countMessageTokens } from '@local-llm-agent/llm-engine';
+import type { SkillDefinition, SkillParameter } from '@local-llm-agent/skill-store';
+import type { ToolBridge, ToolResult } from '@local-llm-agent/tool-bridge';
 
 /** Events emitted during agent execution */
 export type AgentEvent =
@@ -48,7 +48,7 @@ After receiving tool results, synthesize a clear, concise response for the user.
 export class NanoAgent {
   private engine: LLMEngine;
   private toolBridge: ToolBridge;
-  private config: Required<NanoAgentConfig>;
+  private config: Required<Omit<NanoAgentConfig, 'engine' | 'toolBridge'>>;
   private messages: Message[] = [];
   private skills = new Map<string, SkillDefinition>();
   private _aborted = false;

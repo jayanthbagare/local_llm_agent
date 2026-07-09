@@ -2,14 +2,13 @@
 // One import to get the full local LLM agent experience.
 // Composes llm-engine, nano-agent, skill-store, and tool-bridge.
 
-import { SimulatedEngine, WebGPUEngine } from '../../llm-engine/src/index.js';
-import { NanoAgent } from '../../nano-agent/src/agent.js';
-import { SkillStore } from '../../skill-store/src/store.js';
-import { ToolBridge, createToolBridge } from '../../tool-bridge/src/bridge.js';
-import type { LLMEngine, LoadOptions } from '../../llm-engine/src/types.js';
-import type { NanoAgentConfig, AgentEvent } from '../../nano-agent/src/agent.js';
-import type { SkillDefinition } from '../../skill-store/src/types.js';
-import type { ToolResult } from '../../tool-bridge/src/bridge.js';
+import { SimulatedEngine, WebGPUEngine } from '@local-llm-agent/llm-engine';
+import { NanoAgent } from '@local-llm-agent/nano-agent';
+import { SkillStore } from '@local-llm-agent/skill-store';
+import { ToolBridge, createToolBridge } from '@local-llm-agent/tool-bridge';
+import type { LLMEngine, LoadOptions } from '@local-llm-agent/llm-engine';
+import type { NanoAgentConfig, AgentEvent } from '@local-llm-agent/nano-agent';
+import type { SkillDefinition } from '@local-llm-agent/skill-store';
 
 /** Options for creating a complete agent with createAgent() */
 export interface CreateAgentOptions {
@@ -192,21 +191,21 @@ export type {
   ToolCall,
   ToolDefinition,
   ModelInfo,
-} from '../../llm-engine/src/types.js';
+} from '@local-llm-agent/llm-engine';
 
 export type {
   NanoAgentConfig,
   AgentEvent,
-} from '../../nano-agent/src/agent.js';
+} from '@local-llm-agent/nano-agent';
 
 export type {
   SkillDefinition,
   SkillTool,
   SkillTrigger,
   SkillParameter,
-} from '../../skill-store/src/types.js';
+} from '@local-llm-agent/skill-store';
 
 export type {
   ToolResult,
   TransportHandler,
-} from '../../tool-bridge/src/bridge.js';
+} from '@local-llm-agent/tool-bridge';
