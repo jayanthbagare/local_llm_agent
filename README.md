@@ -92,7 +92,7 @@ Models are fetched on-demand from HuggingFace CDN and cached in IndexedDB.
 
 ```bash
 # Clone
-git clone https://github.com/your-org/local-llm-agent
+git clone https://github.com/jayanthbagare/local_llm_agent
 cd local-llm-agent
 
 # Install
