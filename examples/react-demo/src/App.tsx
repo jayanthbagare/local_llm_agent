@@ -7,7 +7,7 @@ import {
   useAgent,
   useAgentResponse,
   useAgentTools,
-} from '../../packages/react/src/index.js';
+} from '../../../packages/react/src/index.js';
 
 // ── Chat UI Component ──
 

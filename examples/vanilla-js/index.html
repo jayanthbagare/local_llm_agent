@@ -39,7 +39,7 @@
   <div id="status">Initializing agent...</div>
 
   <script type="module">
-    import { createAgent } from '../packages/sdk/src/index.js';
+    import { createAgent } from '../../packages/sdk/src/index.js';
 
     const chat = document.getElementById('chat');
     const input = document.getElementById('input');
@@ -48,7 +48,8 @@
 
     // Create agent with calculator skill
     const agent = await createAgent({
-      simulated: true, // Use simulated engine for demo
+      model:'phi-3-mini-4k-instruct',
+      // simulated: true, // Use simulated engine for demo
       customSkills: [
         {
           id: 'calculator',
