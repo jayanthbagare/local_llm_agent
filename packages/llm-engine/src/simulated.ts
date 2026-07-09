@@ -8,7 +8,6 @@ import type {
   GenerateResult,
   Token,
   ModelInfo,
-  LoadProgress,
   ToolCall,
 } from './types';
 import { countTokens, countMessageTokens } from './tokenizer';

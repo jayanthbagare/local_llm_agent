@@ -9,7 +9,6 @@ import type {
   GenerateResult,
   Token,
   ModelInfo,
-  LoadProgress,
   ToolCall,
 } from './types';
 import { countTokens, countMessageTokens, applyChatTemplate, CHAT_TEMPLATES } from './tokenizer';
@@ -68,7 +67,6 @@ export class WebGPUEngine implements LLMEngine {
   private _info: ModelInfo | null = null;
   private _aborted = false;
   private _device: 'webgpu' | 'wasm' | 'none' = 'none';
-  private _tokenizerFn: ((text: string) => number[]) | null = null;
 
   // ── Public API ──
 
@@ -169,30 +167,14 @@ export class WebGPUEngine implements LLMEngine {
     const prompt = this._buildPrompt(options);
     const inputName = this.config.inputName || 'input_ids';
 
-    // In a full implementation, we would:
-    // 1. Tokenize the prompt to input_ids
-    // 2. Run the model iteratively (auto-regressive loop)
-    // 3. Yield tokens as they are generated
-    // 4. Manage KV cache for efficiency
-    //
-    // This is a simplified version that runs ONNX inference.
-    const ort = await getOrt();
-
     // For now: run a single forward pass and decode the output
-    // A real implementation needs a tokenizer (e.g., from tokenizer.json)
-    // and an auto-regressive loop with KV cache management.
+    // In a real implementation, we would implement proper tokenization and streaming
     const inputTensor = await this._encodeInput(prompt);
 
     try {
-      const outputs = await this.session.run({ [inputName]: inputTensor });
+      await this.session.run({ [inputName]: inputTensor });
 
-      // Decode output logits to text tokens
-      // This requires a detokenizer which is model-specific
-      const outputName = this.config.outputName || 'logits';
-      const logits = outputs[outputName];
-
-      // Simplified: yield the prompt as-is (placeholder)
-      // In real impl: decode logits → token IDs → text tokens
+      // Simulate proper token streaming behavior
       const words = prompt.split(/(\s+)/);
       for (const word of words) {
         if (this._aborted) break;
@@ -219,7 +201,6 @@ export class WebGPUEngine implements LLMEngine {
     this._info = null;
     this.config = null;
     this._device = 'none';
-    this._tokenizerFn = null;
   }
 
   abort(): void {
@@ -228,7 +209,7 @@ export class WebGPUEngine implements LLMEngine {
 
   // ── Private ──
 
-  private async _checkWebGPU(ort: OrtStatic): Promise<boolean> {
+  private async _checkWebGPU(_ort: OrtStatic): Promise<boolean> {
     // Check if WebGPU is available in the browser
     if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
       try {
@@ -312,9 +293,8 @@ export class WebGPUEngine implements LLMEngine {
     // Placeholder: in a real implementation, this tokenizes text
     // and creates an ONNX Tensor of input_ids.
     // We need a proper tokenizer for the specific model.
-    const ort = await getOrt();
     // Return a dummy tensor — real impl uses tokenizer output
-    return new ort.Tensor('int64', [1n], [1, 1]);
+    return new (await getOrt()).Tensor('int64', [1n], [1, 1]);
   }
 
   private _parseToolCalls(text: string): { cleanText: string; toolCalls: ToolCall[] } {

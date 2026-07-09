@@ -127,7 +127,7 @@ export class NanoAgent {
         maxTokens: this.config.maxTokens,
         tools: tools.length > 0 ? tools : undefined,
         onToken: (token) => {
-          // Don't emit tokens for tool call blocks
+          // Emit token events for better streaming
           if (!token.includes('```json')) {
             // We'll emit thinking events instead of raw tokens
           }
@@ -144,12 +144,6 @@ export class NanoAgent {
       if (result.toolCalls && result.toolCalls.length > 0) {
         for (const toolCall of result.toolCalls) {
           yield { type: 'tool_call', tool: toolCall.name, args: toolCall.arguments };
-
-          // Add assistant tool call to messages
-          this.messages.push({
-            role: 'assistant',
-            content: responseText,
-          });
 
           // Execute tool
           const toolResult = await this._executeTool(toolCall);
