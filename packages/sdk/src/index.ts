@@ -5,6 +5,7 @@
 import { SimulatedEngine, WebGPUEngine, TransformersEngine } from '@local-llm-agent/llm-engine';
 import { NanoAgent } from '@local-llm-agent/nano-agent';
 import { SkillStore } from '@local-llm-agent/skill-store';
+import { BUILTIN_SKILLS } from '@local-llm-agent/skill-store';
 import { ToolBridge, createToolBridge } from '@local-llm-agent/tool-bridge';
 import type { LLMEngine, LoadOptions } from '@local-llm-agent/llm-engine';
 import type { NanoAgentConfig, AgentEvent } from '@local-llm-agent/nano-agent';
@@ -52,6 +53,11 @@ export interface Agent {
   getSkills(): SkillDefinition[];
   /** Get engine info */
   getEngine(): LLMEngine;
+  /**
+   * Pre-authorize a local directory for the file tools (file-read/write/glob).
+   * Pass a handle from `showDirectoryPicker()` invoked in a user gesture.
+   */
+  setFileSystemRoot(handle: unknown): void;
   /** Abort current execution */
   abort(): void;
   /** Clear conversation history */
@@ -106,8 +112,10 @@ export async function createAgent(options: CreateAgentOptions = {}): Promise<Age
     await engine.load({ modelId: 'simulated' });
   }
 
-  // 3. Create skill store
+  // 3. Create skill store, pre-loaded with the bundled built-in skills so
+  //    `skills: ['web-search', 'file-read', ...]` resolves without a network.
   const skillStore = new SkillStore(options.skillStoreOptions);
+  skillStore.registerBuiltins(BUILTIN_SKILLS);
 
   // 4. Create tool bridge
   const toolBridge = createToolBridge();
@@ -159,6 +167,7 @@ export async function createAgent(options: CreateAgentOptions = {}): Promise<Age
     fetchSkill: (id: string) => skillStore.fetch(id),
     getSkills: () => agent.getSkills(),
     getEngine: () => engine,
+    setFileSystemRoot: (handle: unknown) => toolBridge.setFileSystemRoot(handle),
     abort: () => agent.abort(),
     clearHistory: () => agent.clearHistory(),
     destroy: async () => {
@@ -178,9 +187,22 @@ const SDK = {
   SkillStore,
   ToolBridge,
   createToolBridge,
+  BUILTIN_SKILLS,
 };
 
 export default SDK;
+
+// Re-export built-in skills so apps can inspect / customize them.
+export {
+  BUILTIN_SKILLS,
+  getBuiltinSkill,
+  webSearchSkill,
+  httpRequestSkill,
+  fileReadSkill,
+  fileWriteSkill,
+  fileGlobSkill,
+  mcpCallSkill,
+} from '@local-llm-agent/skill-store';
 
 // Re-export key types for convenience
 export type {

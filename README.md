@@ -65,15 +65,19 @@ resultTemplate: |
   {{#each results}}{{@index}}. {{title}} — {{url}}{{/each}}
 ```
 
-**Built-in skills:**
-| Skill | Type | Description |
-|-------|------|-------------|
-| `web-search` | REST | DuckDuckGo web search |
-| `calculator` | Function | Sandboxed math evaluator |
-| `code-interpreter` | Function | Sandboxed JS execution |
-| `calendar` | Browser API | Calendar read/write |
-| `file-system` | Browser API | File read/write |
-| `database-query` | MCP | SQL via MCP server |
+**Built-in skills** (enable via `createAgent({ skills: [...] })`):
+| Skill id | Type | Description |
+|----------|------|-------------|
+| `web-search` | REST | DuckDuckGo web search (no API key) |
+| `http-request` | REST | Call any REST/API endpoint (GET/POST/…) |
+| `file-read` | Browser API | Read a file from a user-granted folder |
+| `file-write` | Browser API | Write a file in the granted folder |
+| `file-glob` | Browser API | Find files by glob (`**/*.ts`) |
+| `mcp-call` | MCP | Invoke a tool on an MCP server (SSE) |
+
+File tools use the browser's File System Access API — the user picks a folder
+once. See `docs/api.md` → **Built-in Skills** for details and the
+`setFileSystemRoot()` helper.
 
 ## Supported Models
 

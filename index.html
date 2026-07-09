@@ -38,7 +38,10 @@
         local: false,                 // set true to self-host under /models/<repo>/
         localModelPath: '/models/',
         modelUrl: null,               // override repo/folder name if needed
-        systemPrompt: 'You are a concise local assistant. Use the calculator tool for arithmetic. Keep answers short.',
+        systemPrompt: 'You are a concise local assistant. You can use tools: calculator (math), web-search (DuckDuckGo), file-read / file-write / file-glob (a local folder the user picks), http-request (call a REST API), and mcp-call (invoke an MCP server tool). Use a tool when it helps; keep answers short.',
+        // Built-in skills to enable (see docs/api.md). File tools prompt the
+        // user to pick a folder on first use.
+        skills: ['web-search', 'file-read', 'file-write', 'file-glob', 'http-request', 'mcp-call'],
         maxSteps: 4,
         maxTokens: 256,
         temperature: 0.3,
@@ -84,13 +87,16 @@
 </head>
 <body>
     <h1>🤖 Local LLM Agent</h1>
-    <p class="subtitle">Runs entirely in your browser — no server, no API keys.</p>
+    <p class="subtitle">Runs entirely in your browser — no server, no API keys. Tools: calculator, web search, file read/write/glob, HTTP/API, MCP.</p>
 
     <div id="chat"></div>
 
     <div class="input-row">
         <input id="input" type="text" placeholder="Loading model…" disabled />
         <button id="send" disabled>Send</button>
+    </div>
+    <div class="input-row" style="margin-top:8px">
+        <button id="grantFs" type="button" style="background:#30363d" hidden>📁 Grant folder access (for file tools)</button>
     </div>
     <div id="status">Starting…</div>
     <progress id="progress" value="0" max="100" hidden></progress>
@@ -102,6 +108,7 @@
         const chat = document.getElementById('chat');
         const input = document.getElementById('input');
         const sendBtn = document.getElementById('send');
+        const grantFsBtn = document.getElementById('grantFs');
         const status = document.getElementById('status');
         const progress = document.getElementById('progress');
 
@@ -163,6 +170,7 @@
                     maxSteps: cfg.maxSteps,
                     maxTokens: cfg.maxTokens,
                     temperature: cfg.temperature,
+                    skills: cfg.skills,
                     customSkills: [
                         {
                             id: 'calculator',
@@ -192,6 +200,13 @@
                 if (dev !== 'webgpu') {
                     addMessage('system', `⚠️ Running on ${dev.toUpperCase()} (CPU) — slower. WebGPU (Chrome/Edge 113+) is much faster.`);
                 }
+
+                // Show the folder-access button if any file tool is enabled and
+                // the File System Access API exists.
+                const usesFiles = (cfg.skills || []).some((s) => s.startsWith('file-'));
+                if (usesFiles && 'showDirectoryPicker' in window) {
+                    grantFsBtn.hidden = false;
+                }
             } catch (err) {
                 progress.hidden = true;
                 setStatus('');
@@ -199,6 +214,22 @@
                 console.error(err);
             }
         }
+
+        // File tools need a user-granted directory. Picking it must happen in a
+        // click handler (user gesture), so do it here and hand the agent the handle.
+        grantFsBtn.addEventListener('click', async () => {
+            try {
+                const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                agent.setFileSystemRoot(handle);
+                grantFsBtn.textContent = `📁 Folder: ${handle.name} (granted)`;
+                grantFsBtn.disabled = true;
+                addMessage('system', `📁 File tools can now access "${handle.name}".`);
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    addMessage('system', `❌ Could not access folder: ${err.message}`);
+                }
+            }
+        });
 
         // ── Run a real agent turn with token streaming ──
         async function send() {

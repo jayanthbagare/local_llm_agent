@@ -403,6 +403,55 @@ function ChatBox() {
 
 ---
 
+## Built-in Skills (Tools)
+
+The SDK bundles ready-to-use skills. Enable them by id via
+`createAgent({ skills: [...] })` — they're pre-registered, so no network fetch
+is needed. Import the definitions directly with `import { BUILTIN_SKILLS } from '@local-llm-agent/sdk'`.
+
+| Skill id | Type | What it does | Parameters |
+|----------|------|--------------|------------|
+| `web-search` | `rest` | DuckDuckGo Instant Answer search; returns structured snippets. | `query` |
+| `http-request` | `rest` | Call any REST/API endpoint (GET/POST/PUT/DELETE/PATCH). | `url`, `method?`, `body?` |
+| `file-read` | `browser-api` | Read a file from a user-granted local folder. | `path` |
+| `file-write` | `browser-api` | Write/create a file in the granted folder. | `path`, `content` |
+| `file-glob` | `browser-api` | Find files by glob pattern (`**/*.ts`, `src/*.md`). | `pattern` |
+| `mcp-call` | `mcp` | Invoke a named tool on an MCP server (SSE). | `serverUrl`, `toolName`, `arguments?` |
+
+```ts
+const agent = await createAgent({
+  model: 'qwen2-0.5b',
+  skills: ['web-search', 'file-read', 'file-glob', 'http-request', 'mcp-call'],
+});
+```
+
+### File tools and the File System Access API
+
+`file-read` / `file-write` / `file-glob` operate on a directory the **user**
+grants via the browser's File System Access API (Chrome/Edge, HTTPS or
+localhost). Because the picker requires a user gesture, authorize the folder
+from a click handler and hand the agent the handle so tools don't prompt
+mid-run:
+
+```ts
+grantButton.addEventListener('click', async () => {
+  const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+  agent.setFileSystemRoot(dir);   // reused by all file tools
+});
+```
+
+If no directory is pre-authorized, the first file tool call will attempt to
+open the picker itself (which may be blocked without an active gesture).
+
+### `http-request` & `mcp-call` notes
+
+- `http-request` is subject to the browser's CORS policy — the target API must
+  allow cross-origin requests from your origin.
+- `mcp-call` POSTs a JSON-RPC `tools/call` to the MCP server's SSE endpoint.
+  Pass tool arguments as a JSON string in `arguments`.
+
+---
+
 ## Skill File Reference
 
 See `skills/web-search.skill.yaml`, `skills/calculator.skill.yaml`, etc. for complete examples. Key sections:

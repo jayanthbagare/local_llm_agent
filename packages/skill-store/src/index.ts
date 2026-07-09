@@ -8,3 +8,13 @@ export type {
 
 export { validateSkill, isSkillDefinition } from './validator';
 export { SkillStore, createSkillStore, type SkillStoreOptions } from './store';
+export {
+  BUILTIN_SKILLS,
+  getBuiltinSkill,
+  webSearchSkill,
+  httpRequestSkill,
+  fileReadSkill,
+  fileWriteSkill,
+  fileGlobSkill,
+  mcpCallSkill,
+} from './builtins';
