@@ -1,7 +1,7 @@
 // ── Nano Agent ──
 // Lightweight ReAct (Reasoning + Acting) agent loop.
 // Orchestrates: user input → LLM reasoning → tool calls → observation → final answer.
-import { countMessageTokens } from '../../llm-engine/src/tokenizer.js';
+import { countMessageTokens } from '@local-llm-agent/llm-engine';
 const DEFAULT_SYSTEM_PROMPT = `You are a helpful AI assistant running locally in the browser.
 You have access to tools. When you need to use a tool, respond with a JSON tool call block:
 

@@ -4,7 +4,7 @@
 
 ```
 @local-llm-agent/sdk  ← One import, everything unified
-    ├── llm-engine    WebGPU inference (ONNX Runtime Web)
+    ├── llm-engine    Real WebGPU/WASM inference (transformers.js)
     ├── nano-agent    ReAct agent loop (~5KB gzipped)
     ├── skill-store   Skill registry + IndexedDB cache
     └── tool-bridge   REST, MCP, sandboxed function execution
@@ -17,10 +17,12 @@
 ```ts
 import { createAgent } from '@local-llm-agent/sdk';
 
+// Real in-browser inference (WebGPU, WASM fallback). The model is downloaded
+// once from the HuggingFace CDN, then cached in the browser for next time.
 const agent = await createAgent({
-  model: 'phi-3-mini-4k',
-  skills: ['calculator', 'web-search'],
-  simulated: true, // for dev; remove for production WebGPU
+  model: 'qwen2-0.5b',
+  customSkills: [/* ... */],
+  maxTokens: 256,          // keep small models responsive
 });
 
 for await (const event of agent.run('What is 256 * 128?')) {
@@ -37,6 +39,9 @@ for await (const event of agent.run('What is 256 * 128?')) {
 // Clean up
 await agent.destroy();
 ```
+
+> For unit tests or Node.js, pass `simulated: true` to use `SimulatedEngine`
+> (no WebGPU / model download required).
 
 ---
 
@@ -61,20 +66,53 @@ interface LLMEngine {
 
 | Class | Description | Requires |
 |-------|-------------|----------|
-| `WebGPUEngine` | Real ONNX Runtime Web inference | Browser, WebGPU, onnxruntime-web |
-| `SimulatedEngine` | Deterministic simulation | Nothing — works everywhere |
+| `TransformersEngine` | **Real** in-browser inference via [transformers.js](https://github.com/huggingface/transformers.js) — loads a quantized ONNX model and runs it on WebGPU (WASM fallback), streaming real tokens. **Default** in browsers. | Browser, `@huggingface/transformers` |
+| `SimulatedEngine` | Deterministic simulation for tests/dev. | Nothing — works everywhere |
+| `WebGPUEngine` | Legacy ONNX Runtime Web scaffold (placeholder inference). | Browser, onnxruntime-web |
+
+`createAgent()` selects `TransformersEngine` automatically in a browser, and
+`SimulatedEngine` in Node (or when you pass `simulated: true`).
+
+### Model caching (download once)
+
+`TransformersEngine` sets `env.useBrowserCache = true`, so model files are stored
+in the browser's **Cache Storage** (bucket: `transformers-cache`) on first load.
+Every subsequent load reads from the cache with **no network** — a model is
+downloaded at most once per origin. Inspect it in DevTools → Application →
+Cache Storage → `transformers-cache`.
+
+### Self-hosting models (no HuggingFace dependency)
+
+Set `local: true` to load model files from **your own origin** instead of the
+HuggingFace hub. Files are still cached in the browser after first fetch.
+
+```ts
+await engine.load({
+  modelId: 'qwen2-0.5b',
+  local: true,
+  localModelPath: '/models/',   // serves /models/<repo>/... on your origin
+});
+```
+
+The folder under `localModelPath` must mirror the HuggingFace repo layout
+(e.g. `onnx/model_q4f16.onnx`, `tokenizer.json`, `config.json`, ...).
 
 ### `LoadOptions`
 
 ```ts
 interface LoadOptions {
-  modelId: string;           // e.g., 'phi-3-mini-4k'
-  modelUrl?: string;         // Override download URL
-  device?: 'webgpu' | 'wasm' | 'auto';
-  cache?: boolean;           // Cache model in IndexedDB
+  modelId: string;           // e.g., 'qwen2-0.5b'
+  modelUrl?: string;         // Override repo id / folder name
+  device?: 'webgpu' | 'wasm' | 'auto';  // default: 'auto'
+  cache?: boolean;
   onProgress?: (p: LoadProgress) => void;
+  local?: boolean;           // Load from your own origin (see above)
+  localModelPath?: string;   // Base path for self-hosted models (default '/models/')
+  dtype?: string;            // Override quantization: 'q4f16' | 'q4' | 'fp16' | 'int8'
 }
 ```
+
+> By default, `dtype` is `q4f16` on WebGPU and `q4` on WASM.
 
 ### `GenerateOptions`
 
@@ -316,13 +354,20 @@ The main entry point. Creates a fully configured agent in one call.
 
 ```ts
 const agent = await createAgent({
-  model: 'phi-3-mini-4k',      // Model ID
-  simulated: false,            // Use real WebGPU engine
+  model: 'qwen2-0.5b',         // Model ID (default engine = real transformers.js)
+  simulated: false,            // true → SimulatedEngine (tests / Node)
   systemPrompt: '...',         // Custom system prompt
-  maxSteps: 5,                 // Max tool-calling iterations
-  temperature: 0.7,
+  maxSteps: 4,                 // Max tool-calling iterations
+  temperature: 0.3,
+  maxTokens: 256,              // Cap generation length (keeps small models fast)
+  loadOptions: {               // Passed to engine.load()
+    device: 'auto',            // 'webgpu' | 'wasm' | 'auto'
+    local: false,              // true → self-host under localModelPath
+    localModelPath: '/models/',
+    onProgress: (p) => console.log(p.message),
+  },
   skills: ['web-search', 'calculator'], // Load built-in skills
-  customSkills: [...],         // Inline skill definitions
+  customSkills: [/* ... */],   // Inline skill definitions
   skillStoreOptions: {         // Remote registry config
     registryUrl: 'https://skills.example.com',
     allowRemote: true,
@@ -387,11 +432,13 @@ permissions:
 
 ## Model Presets
 
-| Model | Size | Context | Format |
-|-------|------|---------|--------|
-| `phi-3-mini-4k` | ~2.2 GB | 4096 | ONNX INT4 |
-| `gemma-2-2b` | ~1.6 GB | 8192 | ONNX INT4 |
-| `qwen2-0.5b` | ~0.6 GB | 32768 | ONNX INT4 |
+| Model ID | HuggingFace repo | Context | dtype (WebGPU) |
+|----------|------------------|---------|----------------|
+| `qwen2-0.5b` | `onnx-community/Qwen2.5-0.5B-Instruct` | 32768 | q4f16 (~0.5 GB) |
+| `phi-3-mini-4k-instruct` | `onnx-community/Phi-3.5-mini-instruct-onnx-web` | 4096 | q4f16 (~2 GB) |
+| `gemma-2-2b` | `onnx-community/gemma-2-2b-it` | 8192 | q4f16 (~1.6 GB) |
+
+Models are fetched on first use and cached in the browser's Cache Storage.
 
 ---
 

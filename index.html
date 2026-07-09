@@ -1,85 +1,266 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Local LLM Agent Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local LLM Agent</title>
+
+    <!--
+      Import map: resolves the bare specifier the SDK uses for real inference
+      (@huggingface/transformers) to the CDN ESM build. Everything else (the
+      agent loop, skill store, tool bridge, engine) is bundled into
+      ./dist-browser/sdk.js by `pnpm build:browser`.
+    -->
+    <script type="importmap">
+    {
+      "imports": {
+        "@huggingface/transformers": "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/dist/transformers.min.js"
+      }
+    }
+    </script>
+
+    <!-- ─────────────────────────────────────────────────────────────
+         ADMIN CONFIG — baked into the page by whoever deploys it.
+         End users do NOT choose the model. Change these values to pin
+         a different model / prompt / tools for everyone.
+
+         model:   friendly id understood by the engine (see MODEL_PRESETS),
+                  OR a repo/folder name when `local` is true.
+         local:   true  → load model files from THIS origin (localModelPath),
+                          so nothing is fetched from HuggingFace.
+                  false → download once from the HuggingFace CDN.
+         In both cases files are cached in the browser's Cache Storage, so the
+         model is downloaded at most once per user, then loaded offline.
+    ────────────────────────────────────────────────────────────────── -->
+    <script>
+      window.AGENT_CONFIG = {
+        model: 'qwen2-0.5b',
+        local: false,                 // set true to self-host under /models/<repo>/
+        localModelPath: '/models/',
+        modelUrl: null,               // override repo/folder name if needed
+        systemPrompt: 'You are a concise local assistant. Use the calculator tool for arithmetic. Keep answers short.',
+        maxSteps: 4,
+        maxTokens: 256,
+        temperature: 0.3,
+      };
+    </script>
+
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            max-width: 800px; 
-            margin: 0 auto; 
-            padding: 20px; 
-            background: #f5f5f5;
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #0d1117; color: #c9d1d9;
+            max-width: 860px; margin: 0 auto; padding: 20px;
         }
-        .container { 
-            background: white; 
-            padding: 20px; 
-            border-radius: 8px; 
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        h1 { color: #58a6ff; margin-bottom: 4px; font-size: 1.6rem; }
+        .subtitle { color: #8b949e; margin-bottom: 16px; font-size: .9rem; }
+        #chat {
+            border: 1px solid #30363d; border-radius: 8px; height: 460px;
+            overflow-y: auto; padding: 16px; margin-bottom: 12px; background: #161b22;
         }
-        #output { 
-            border: 1px solid #ccc; 
-            padding: 15px; 
-            min-height: 300px; 
-            background: #f9f9f9; 
-            margin-top: 20px;
-            white-space: pre-wrap;
-            border-radius: 4px;
+        .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; max-width: 85%; white-space: pre-wrap; word-wrap: break-word; }
+        .msg.user { background: #1f6feb; color: #fff; margin-left: auto; }
+        .msg.assistant { background: #21262d; }
+        .msg.system { background: #161b22; border: 1px solid #30363d; font-style: italic; color: #8b949e; font-size: .88em; }
+        .msg.tool { background: #0d3326; border: 1px solid #238636; font-size: .85em; font-family: ui-monospace, monospace; }
+        .input-row { display: flex; gap: 8px; }
+        #input {
+            flex: 1; padding: 12px; background: #0d1117; border: 1px solid #30363d;
+            border-radius: 8px; color: #c9d1d9; font-size: 14px;
         }
-        .thinking { color: #666; }
-        .tool { color: #0066cc; }
-        .result { color: #009900; }
-        .error { color: #cc0000; }
-        .done { color: #0066cc; font-weight: bold; }
-        .header { color: #2c5aa0; }
-        button { 
-            background: #2c5aa0; 
-            color: white; 
-            border: none; 
-            padding: 10px 20px; 
-            border-radius: 4px; 
-            cursor: pointer; 
-            font-size: 16px;
+        #input:focus { outline: none; border-color: #58a6ff; }
+        button {
+            padding: 12px 22px; background: #238636; color: #fff; border: none;
+            border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;
         }
-        button:hover { background: #1a4070; }
+        button:hover:not(:disabled) { background: #2ea043; }
+        button:disabled { opacity: .5; cursor: not-allowed; }
+        #status { margin-top: 8px; font-size: 12px; color: #8b949e; min-height: 16px; }
+        .thinking { animation: pulse 1.1s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+        progress { width: 100%; height: 8px; margin-top: 8px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="header">🤖 Local LLM Agent Demo</h1>
-        <p>This is a simplified demonstration of what the agent would do.</p>
-        
-        <button onclick="runDemo()">Run Demo</button>
-        <div id="output">Click "Run Demo" to see the simulation of the agent in action...</div>
+    <h1>🤖 Local LLM Agent</h1>
+    <p class="subtitle">Runs entirely in your browser — no server, no API keys.</p>
+
+    <div id="chat"></div>
+
+    <div class="input-row">
+        <input id="input" type="text" placeholder="Loading model…" disabled />
+        <button id="send" disabled>Send</button>
     </div>
-    
-    <script>
-        function runDemo() {
-            const output = document.getElementById('output');
-            output.textContent = '🤖 Creating agent...\n';
-            
-            setTimeout(() => {
-                output.textContent += '🔧 Initializing with phi-3-mini-4k model...\n';
-                output.textContent += '📊 Loading calculator skill...\n';
-                output.textContent += '🔍 Loading web search skill...\n';
-            }, 500);
-            
-            setTimeout(() => {
-                output.textContent += '\n🧠 Thinking about "What is 256 * 128?"...\n';
-            }, 1000);
-            
-            setTimeout(() => {
-                output.textContent += '🔧 Calling calculator tool...\n';
-            }, 1500);
-            
-            setTimeout(() => {
-                output.textContent += '📋 Calculation result: 256 × 128 = 32,768\n';
-            }, 2000);
-            
-            setTimeout(() => {
-                output.textContent += '\n✅ Done in 3 steps\n';
-            }, 2500);
+    <div id="status">Starting…</div>
+    <progress id="progress" value="0" max="100" hidden></progress>
+
+    <script type="module">
+        import { createAgent } from './dist-browser/sdk.js';
+
+        const cfg = window.AGENT_CONFIG;
+        const chat = document.getElementById('chat');
+        const input = document.getElementById('input');
+        const sendBtn = document.getElementById('send');
+        const status = document.getElementById('status');
+        const progress = document.getElementById('progress');
+
+        let agent = null;
+
+        function addMessage(role, content) {
+            const div = document.createElement('div');
+            div.className = `msg ${role}`;
+            div.textContent = content;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+            return div;
         }
+
+        function setStatus(text, busy = false) {
+            status.textContent = text;
+            status.className = busy ? 'thinking' : '';
+        }
+
+        // Has this model already been cached by transformers.js? If so, the
+        // user won't re-download it — we can tell them load will be instant-ish.
+        async function isModelCached() {
+            try {
+                if (!('caches' in window)) return false;
+                const cache = await caches.open('transformers-cache');
+                const keys = await cache.keys();
+                return keys.length > 0;
+            } catch { return false; }
+        }
+
+        // ── Auto-load the admin-configured model on page open ──
+        async function boot() {
+            progress.hidden = false;
+            const cached = await isModelCached();
+            setStatus(cached
+                ? 'Loading model from browser cache…'
+                : 'Downloading model (one-time)… this is cached for next time.', true);
+
+            if (!('gpu' in navigator)) {
+                addMessage('system', '⚠️ WebGPU not available — using WASM CPU inference (slower).');
+            }
+
+            try {
+                agent = await createAgent({
+                    model: cfg.model,
+                    loadOptions: {
+                        device: 'auto',
+                        local: !!cfg.local,
+                        localModelPath: cfg.localModelPath,
+                        modelUrl: cfg.modelUrl || undefined,
+                        onProgress: (p) => {
+                            if (p.totalBytes) {
+                                progress.value = Math.round((p.bytesDownloaded / p.totalBytes) * 100);
+                            }
+                            setStatus(p.message || p.status, true);
+                        },
+                    },
+                    systemPrompt: cfg.systemPrompt,
+                    maxSteps: cfg.maxSteps,
+                    maxTokens: cfg.maxTokens,
+                    temperature: cfg.temperature,
+                    customSkills: [
+                        {
+                            id: 'calculator',
+                            name: 'Calculator',
+                            version: '1.0.0',
+                            description: 'Evaluates a mathematical expression and returns the numeric result.',
+                            tool: {
+                                type: 'function',
+                                execute: 'return String(eval(params.expression));',
+                                parameters: {
+                                    expression: { type: 'string', description: 'Math expression, e.g. "256 * 128"', required: true },
+                                },
+                            },
+                            resultTemplate: '{{expression}} = {{result}}',
+                        },
+                    ],
+                });
+
+                progress.hidden = true;
+                input.disabled = false;
+                sendBtn.disabled = false;
+                input.placeholder = "Ask anything… e.g. 'What is 256 * 128?'";
+                input.focus();
+
+                const dev = agent.getEngine().getModelInfo()?.device || 'this device';
+                setStatus(`Ready — running on ${dev.toUpperCase()}${cached ? ' (loaded from cache)' : ''}.`);
+                if (dev !== 'webgpu') {
+                    addMessage('system', `⚠️ Running on ${dev.toUpperCase()} (CPU) — slower. WebGPU (Chrome/Edge 113+) is much faster.`);
+                }
+            } catch (err) {
+                progress.hidden = true;
+                setStatus('');
+                addMessage('system', `❌ Failed to load model: ${err.message}`);
+                console.error(err);
+            }
+        }
+
+        // ── Run a real agent turn with token streaming ──
+        async function send() {
+            const text = input.value.trim();
+            if (!text || !agent) return;
+
+            addMessage('user', text);
+            input.value = '';
+            sendBtn.disabled = true;
+            input.disabled = true;
+            setStatus('Thinking…', true);
+
+            let streamBubble = null;
+
+            try {
+                for await (const event of agent.run(text)) {
+                    switch (event.type) {
+                        case 'token':
+                            if (!streamBubble) streamBubble = addMessage('assistant', '');
+                            streamBubble.textContent += event.token;
+                            chat.scrollTop = chat.scrollHeight;
+                            break;
+                        case 'thinking':
+                            if (!streamBubble) streamBubble = addMessage('assistant', '');
+                            streamBubble.textContent = event.content;
+                            chat.scrollTop = chat.scrollHeight;
+                            streamBubble = null;
+                            break;
+                        case 'tool_call':
+                            addMessage('system', `🔧 Calling tool: ${event.tool}(${JSON.stringify(event.args)})`);
+                            break;
+                        case 'tool_result':
+                            if (event.result.success) {
+                                addMessage('tool', typeof event.result.data === 'string'
+                                    ? event.result.data
+                                    : JSON.stringify(event.result.data, null, 2));
+                            } else {
+                                addMessage('system', `❌ Tool error: ${event.result.error}`);
+                            }
+                            break;
+                        case 'done':
+                            setStatus(`✅ Done in ${event.steps} step(s)`);
+                            break;
+                        case 'error':
+                            addMessage('system', `❌ ${event.error}`);
+                            break;
+                    }
+                }
+            } catch (err) {
+                addMessage('system', `❌ ${err.message}`);
+                console.error(err);
+            } finally {
+                sendBtn.disabled = false;
+                input.disabled = false;
+                input.focus();
+            }
+        }
+
+        sendBtn.addEventListener('click', send);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+
+        boot();
     </script>
 </body>
 </html>

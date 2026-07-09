@@ -1,6 +1,6 @@
-import type { LLMEngine, Message } from '../../llm-engine/src/types.js';
-import type { SkillDefinition } from '../../skill-store/src/types.js';
-import type { ToolBridge, ToolResult } from '../../tool-bridge/src/bridge.js';
+import type { LLMEngine, Message } from '@local-llm-agent/llm-engine';
+import type { SkillDefinition } from '@local-llm-agent/skill-store';
+import type { ToolBridge, ToolResult } from '@local-llm-agent/tool-bridge';
 /** Events emitted during agent execution */
 export type AgentEvent = {
     type: 'thinking';

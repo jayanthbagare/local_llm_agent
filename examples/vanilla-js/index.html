@@ -38,18 +38,29 @@
   </div>
   <div id="status">Initializing agent...</div>
 
+  <script type="importmap">
+    {
+      "imports": {
+        "@huggingface/transformers": "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/dist/transformers.min.js"
+      }
+    }
+  </script>
   <script type="module">
-    import { createAgent } from '../../packages/sdk/src/index.js';
+    import { createAgent } from '../../dist-browser/sdk.js';
 
     const chat = document.getElementById('chat');
     const input = document.getElementById('input');
     const sendBtn = document.getElementById('send');
     const status = document.getElementById('status');
 
-    // Create agent with calculator skill
+    // Create agent with calculator skill — real in-browser inference
+    // (transformers.js WebGPU/WASM). Use a small model for a fast first load.
     const agent = await createAgent({
-      model:'phi-3-mini-4k-instruct',
-      // simulated: true, // Use simulated engine for demo
+      model: 'qwen2-0.5b',
+      loadOptions: {
+        device: 'auto',
+        onProgress: (p) => { status.textContent = p.message || p.status; },
+      },
       customSkills: [
         {
           id: 'calculator',

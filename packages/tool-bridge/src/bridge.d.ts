@@ -1,4 +1,4 @@
-import type { SkillTool } from '../../skill-store/src/types.js';
+import type { SkillTool } from '@local-llm-agent/skill-store';
 /** Arguments passed to a tool */
 export type ToolArgs = Record<string, unknown>;
 /** Result of a tool execution */

@@ -27,6 +27,18 @@ export interface LoadOptions {
   device?: 'webgpu' | 'wasm' | 'auto';
   cache?: boolean;
   onProgress?: (p: LoadProgress) => void;
+  /**
+   * Load model files from your own origin instead of the HuggingFace hub.
+   * When set, transformers.js resolves files under `<localModelPath>/<modelId>/`.
+   * Files are still cached in the browser's Cache Storage on first load, so
+   * subsequent visits require no network at all.
+   * e.g. `local: true, localModelPath: '/models/'`
+   */
+  local?: boolean;
+  /** Base path (on the current origin) that holds self-hosted model folders. */
+  localModelPath?: string;
+  /** Explicit dtype override (e.g. 'q4f16', 'q4', 'fp16', 'int8'). */
+  dtype?: string;
 }
 
 /** Tool definition for function calling */

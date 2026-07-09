@@ -2,7 +2,7 @@
 // One import to get the full local LLM agent experience.
 // Composes llm-engine, nano-agent, skill-store, and tool-bridge.
 
-import { SimulatedEngine, WebGPUEngine } from '@local-llm-agent/llm-engine';
+import { SimulatedEngine, WebGPUEngine, TransformersEngine } from '@local-llm-agent/llm-engine';
 import { NanoAgent } from '@local-llm-agent/nano-agent';
 import { SkillStore } from '@local-llm-agent/skill-store';
 import { ToolBridge, createToolBridge } from '@local-llm-agent/tool-bridge';
@@ -86,10 +86,11 @@ export async function createAgent(options: CreateAgentOptions = {}): Promise<Age
   } else if (options.simulated) {
     engine = new SimulatedEngine();
   } else {
-    // Try WebGPU, fall back to simulated
-    try {
-      engine = new WebGPUEngine();
-    } catch {
+    // Real in-browser inference via transformers.js (WebGPU, WASM fallback).
+    // Fall back to the simulated engine only when no browser runtime exists.
+    if (typeof navigator !== 'undefined') {
+      engine = new TransformersEngine();
+    } else {
       engine = new SimulatedEngine();
     }
   }
@@ -172,6 +173,7 @@ const SDK = {
   createAgent,
   SimulatedEngine,
   WebGPUEngine,
+  TransformersEngine,
   NanoAgent,
   SkillStore,
   ToolBridge,
