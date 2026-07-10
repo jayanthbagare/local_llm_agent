@@ -23,10 +23,13 @@ describe('BUILTIN_SKILLS', () => {
     expect(getBuiltinSkill('nope')).toBeUndefined();
   });
 
-  it('web-search targets Wikipedia (not the dead DuckDuckGo IA API)', () => {
+  it('web-search targets DuckDuckGo\'s general HTML results (not just Wikipedia; not the dead IA JSON API)', () => {
     const s = getBuiltinSkill('web-search')!;
-    expect(s.tool.url).toContain('wikipedia.org');
-    expect(s.tool.queryParams?.origin).toBe('*'); // CORS-safe
+    expect(s.tool.url).toContain('duckduckgo.com');
+    expect(s.tool.queryParams?.q).toBe('{{query}}');
+    // No API key required, but needs a browser UA + Referer to avoid DDG's bot challenge page.
+    expect(s.tool.headers?.['User-Agent']).toBeTruthy();
+    expect(s.tool.headers?.Referer).toBeTruthy();
   });
 
   it('wikipedia tool reads a page extract via the action API', () => {

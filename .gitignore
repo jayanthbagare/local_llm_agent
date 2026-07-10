@@ -8,6 +8,13 @@ dist/
 *.log
 downloaded_models/
 
+# GAIA benchmark dataset + eval results. The GAIA dataset license prohibits
+# resharing outside a gated/private repo, and results reference verbatim
+# question/answer text from it — never commit any of this.
+.venv-gaia/
+eval/gaia/
+eval/results/
+
 # Stale compiled output that used to live next to sources (build now targets dist/)
 packages/*/src/**/*.js
 packages/*/src/**/*.js.map

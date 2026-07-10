@@ -6,19 +6,25 @@
 import type { SkillDefinition } from './types';
 
 /**
- * Web search backed by Wikipedia's CORS-enabled search API. Returns real,
- * usable snippets (the DuckDuckGo Instant Answer API returns almost nothing for
- * general queries and is not a real search). No API key required.
+ * Real general web search via DuckDuckGo's HTML endpoint (no API key
+ * required). Unlike a Wikipedia-only search, this reaches arbitrary sites —
+ * GitHub, museum/library catalogs, government standards, news, etc. — which
+ * is required for many real-world lookup tasks that aren't Wikipedia
+ * articles. The DuckDuckGo Instant Answer JSON API returns almost nothing
+ * useful for general queries, so we parse the (undocumented, ToS-restricted
+ * for heavy automated use — keep volume light) HTML results page instead.
+ * A browser User-Agent + Referer header avoids DuckDuckGo's bot-detection
+ * "anomaly" challenge page for light, occasional use.
  */
 export const webSearchSkill: SkillDefinition = {
   id: 'web-search',
   name: 'Web Search',
-  version: '2.0.0',
+  version: '3.0.0',
   description:
-    'Search the web (Wikipedia-backed) and return the most relevant article snippets. Use this to look up facts, definitions, and figures.',
+    'Search the general web (not just Wikipedia) and return the top result titles, snippets, and URLs. Use this to find facts on any site — GitHub, news, museums, government pages, etc.',
   author: 'local-llm-agent',
   license: 'MIT',
-  tags: ['search', 'web', 'retrieval', 'knowledge', 'wikipedia'],
+  tags: ['search', 'web', 'retrieval', 'knowledge'],
   trigger: {
     keywords: ['search', 'find online', 'look up', 'google', 'web search', 'internet'],
     patterns: ['search for {query}', 'find information about {query}'],
@@ -26,16 +32,15 @@ export const webSearchSkill: SkillDefinition = {
   tool: {
     type: 'rest',
     method: 'GET',
-    url: 'https://en.wikipedia.org/w/api.php',
+    url: 'https://html.duckduckgo.com/html/',
     queryParams: {
-      action: 'query',
-      list: 'search',
-      srsearch: '{{query}}',
-      srlimit: '5',
-      format: 'json',
-      origin: '*',
+      q: '{{query}}',
     },
-    headers: { Accept: 'application/json' },
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+      Referer: 'https://html.duckduckgo.com/html/',
+    },
     parameters: {
       query: {
         type: 'string',
@@ -44,14 +49,27 @@ export const webSearchSkill: SkillDefinition = {
         maxLength: 300,
       },
     },
-    // Produce a single readable text block (the template engine has no loops).
+    // The response is raw HTML (DuckDuckGo's lite results page). Parse out
+    // each result's title, snippet, and URL with regex (no DOM in Node/worker).
     transform: `
-      const hits = (response.query && response.query.search) || [];
-      if (hits.length === 0) return { text: 'No results found.' };
-      const strip = (s) => String(s || '').replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-      const lines = hits.slice(0, 5).map((h, i) =>
-        (i + 1) + '. ' + h.title + ' — ' + strip(h.snippet) +
-        ' (https://en.wikipedia.org/wiki/' + encodeURIComponent(h.title.replace(/ /g, '_')) + ')'
+      const html = String(response || '');
+      if (/anomaly-modal|did not match any/i.test(html)) {
+        return { text: 'Search temporarily blocked or returned no results. Try the wikipedia tool instead, or rephrase the query.' };
+      }
+      const stripTags = (s) => String(s || '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+        .replace(/&#39;/g, "'").trim();
+      const titleRe = /class="result__a"[^>]*href="([^"]*)"[^>]*>([\\s\\S]*?)<\\/a>/g;
+      const snippetRe = /class="result__snippet"[^>]*>([\\s\\S]*?)<\\/a>/g;
+      const titles = [];
+      let m;
+      while ((m = titleRe.exec(html)) !== null) titles.push({ url: m[1], title: stripTags(m[2]) });
+      const snippets = [];
+      while ((m = snippetRe.exec(html)) !== null) snippets.push(stripTags(m[1]));
+      if (titles.length === 0) return { text: 'No results found.' };
+      const lines = titles.slice(0, 5).map((t, i) =>
+        (i + 1) + '. ' + t.title + ' — ' + (snippets[i] || '') + ' (' + t.url + ')'
       );
       return { text: lines.join('\\n') };
     `,
@@ -59,8 +77,8 @@ export const webSearchSkill: SkillDefinition = {
   },
   resultTemplate: `Search results:\n{{text}}`,
   permissions: [
-    { network: 'en.wikipedia.org' },
-    { description: 'Query Wikipedia to retrieve web results' },
+    { network: 'html.duckduckgo.com' },
+    { description: 'Query DuckDuckGo to retrieve general web search results' },
   ],
 };
 
