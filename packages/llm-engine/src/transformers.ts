@@ -133,6 +133,7 @@ export class TransformersEngine implements LLMEngine {
   private generator: TextGenerationPipeline | null = null;
   private _info: ModelInfo | null = null;
   private _device: 'webgpu' | 'wasm' | 'none' = 'none';
+  private _hasShaderF16 = false;
   private _aborted = false;
   private _contextLength = 4096;
 
@@ -174,8 +175,7 @@ export class TransformersEngine implements LLMEngine {
         : `Downloading ${preset.name} (${repo})...`,
     });
 
-    const dtype =
-      options.dtype ?? (device === 'webgpu' ? 'q4f16' : 'q4');
+    const dtype = options.dtype ?? this._pickDtype(device);
 
     try {
       this.generator = await tf.pipeline('text-generation', repo, {
@@ -206,9 +206,15 @@ export class TransformersEngine implements LLMEngine {
     } catch (err) {
       if (device === 'webgpu') {
         // Fall back to WASM CPU inference.
+        console.warn(
+          '[llm-engine] WebGPU pipeline failed to load, falling back to WASM:',
+          err,
+        );
         options.onProgress?.({
           status: 'loading',
-          message: 'WebGPU failed, falling back to WASM (slower)...',
+          message: `WebGPU failed (${
+            (err as Error)?.message || err
+          }), falling back to WASM (slower)...`,
         });
         this._device = 'wasm';
         this.generator = await tf.pipeline('text-generation', repo, {
@@ -390,14 +396,39 @@ export class TransformersEngine implements LLMEngine {
     if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
       try {
         const adapter = await (navigator as unknown as {
-          gpu: { requestAdapter: () => Promise<unknown> };
+          gpu: {
+            requestAdapter: () => Promise<{
+              features?: { has: (name: string) => boolean };
+            } | null>;
+          };
         }).gpu.requestAdapter();
-        if (adapter) return 'webgpu';
-      } catch {
-        /* fall through */
+        if (adapter) {
+          // Remember whether this adapter supports fp16 shaders so we can
+          // pick a dtype it can actually run (see `_pickDtype`). Adapters
+          // without `shader-f16` (common on many integrated/mobile GPUs)
+          // will throw when asked to run a q4f16 pipeline, which used to
+          // be silently mis-reported as "WebGPU failed" and fell back to
+          // WASM even though WebGPU itself works fine with a q4 dtype.
+          this._hasShaderF16 = !!adapter.features?.has?.('shader-f16');
+          return 'webgpu';
+        }
+      } catch (err) {
+        console.warn(
+          '[llm-engine] navigator.gpu.requestAdapter() failed, falling back to WASM:',
+          err,
+        );
       }
     }
     return 'wasm';
+  }
+
+  /** Pick a dtype the resolved device can actually run. */
+  private _pickDtype(device: 'webgpu' | 'wasm'): string {
+    if (device !== 'webgpu') return 'q4';
+    // q4f16 needs the `shader-f16` WebGPU feature; without it the pipeline
+    // throws during session creation. Use plain q4 instead so we stay on
+    // WebGPU rather than needlessly downgrading to WASM.
+    return this._hasShaderF16 ? 'q4f16' : 'q4';
   }
 
   private _toChatMessages(options: GenerateOptions): ChatMessage[] {

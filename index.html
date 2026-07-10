@@ -34,16 +34,22 @@
     ────────────────────────────────────────────────────────────────── -->
     <script>
       window.AGENT_CONFIG = {
-        model: 'qwen2-1.5b',
-        local: false,                 // set true to self-host under /models/<repo>/
+        // Model is served by a local Ollama process (https://ollama.com),
+        // not downloaded into the browser. Run `ollama serve` (usually
+        // already running as a background service) and make sure the model
+        // is pulled first: `ollama pull llama3.2` (or whichever tag you set
+        // below). This sidesteps the browser's WASM/WebGPU memory ceiling,
+        // so much larger/more capable models can be used reliably.
+        ollamaBaseUrl: 'http://localhost:11434',
+        ollamaModel: 'qwen2.5:7b',
         localModelPath: '/models/',
         modelUrl: null,               // override repo/folder name if needed
-        systemPrompt: 'You are a careful assistant. Reason step by step. You can use tools: calculator (arithmetic — always use it for any non-trivial math), web-search (Wikipedia-backed search), wikipedia (read a specific Wikipedia page — pass a "find" keyword like "perigee" to get the exact passage), file-read / file-write / file-glob (a local folder the user picks), http-request (call a REST API), and mcp-call (invoke an MCP server tool). Use tools when they help; do the math with the calculator rather than guessing. Give a final answer prefixed with FINAL:.',
+        systemPrompt: 'You are a careful research assistant. For questions that need multiple facts (e.g. a distance AND a speed/pace/rate), you MUST: (1) identify every fact you need before answering, (2) look up EACH missing fact individually with a tool — never guess or estimate a number you could look up, (3) use the calculator tool for every arithmetic step — never compute in your head, (4) only give a FINAL answer after all lookups and calculations are done. Available tools: calculator (arithmetic), web-search (Wikipedia-backed search), wikipedia (read a specific Wikipedia page — pass a "find" keyword like "perigee" to get the exact passage), file-read / file-write / file-glob (a local folder the user picks), http-request (call a REST API), and mcp-call (invoke an MCP server tool). Give your final answer prefixed with FINAL:.',
         // Built-in skills to enable (see docs/api.md). File tools prompt the
         // user to pick a folder on first use.
         skills: ['web-search', 'wikipedia', 'file-read', 'file-write', 'file-glob', 'http-request', 'mcp-call'],
-        maxSteps: 6,
-        maxTokens: 512,
+        maxSteps: 10,
+        maxTokens: 800,
         temperature: 0.2,
       };
     </script>
@@ -102,7 +108,7 @@
     <progress id="progress" value="0" max="100" hidden></progress>
 
     <script type="module">
-        import { createAgent } from './dist-browser/sdk.js';
+        import { createAgent, OllamaEngine } from './dist-browser/sdk.js';
 
         const cfg = window.AGENT_CONFIG;
         const chat = document.getElementById('chat');
@@ -128,41 +134,18 @@
             status.className = busy ? 'thinking' : '';
         }
 
-        // Has this model already been cached by transformers.js? If so, the
-        // user won't re-download it — we can tell them load will be instant-ish.
-        async function isModelCached() {
-            try {
-                if (!('caches' in window)) return false;
-                const cache = await caches.open('transformers-cache');
-                const keys = await cache.keys();
-                return keys.length > 0;
-            } catch { return false; }
-        }
-
         // ── Auto-load the admin-configured model on page open ──
         async function boot() {
-            progress.hidden = false;
-            const cached = await isModelCached();
-            setStatus(cached
-                ? 'Loading model from browser cache…'
-                : 'Downloading model (one-time)… this is cached for next time.', true);
-
-            if (!('gpu' in navigator)) {
-                addMessage('system', '⚠️ WebGPU not available — using WASM CPU inference (slower).');
-            }
+            progress.hidden = true; // Ollama doesn't report byte-level download progress here
+            setStatus(`Connecting to Ollama at ${cfg.ollamaBaseUrl}…`, true);
 
             try {
+                const engine = new OllamaEngine({ baseUrl: cfg.ollamaBaseUrl, model: cfg.ollamaModel });
                 agent = await createAgent({
-                    model: cfg.model,
+                    engine,
                     loadOptions: {
-                        device: 'auto',
-                        local: !!cfg.local,
-                        localModelPath: cfg.localModelPath,
                         modelUrl: cfg.modelUrl || undefined,
                         onProgress: (p) => {
-                            if (p.totalBytes) {
-                                progress.value = Math.round((p.bytesDownloaded / p.totalBytes) * 100);
-                            }
                             setStatus(p.message || p.status, true);
                         },
                     },
@@ -195,9 +178,10 @@
                 input.placeholder = "Ask anything… e.g. 'What is 256 * 128?'";
                 input.focus();
 
-                const dev = agent.getEngine().getModelInfo()?.device || 'this device';
-                setStatus(`Ready — running on ${dev.toUpperCase()}${cached ? ' (loaded from cache)' : ''}.`);
-                if (dev !== 'webgpu') {
+                const info = agent.getEngine().getModelInfo();
+                const dev = info?.device || 'this device';
+                setStatus(`Ready — running "${info?.name || cfg.ollamaModel}" via Ollama.`);
+                if (dev !== 'webgpu' && dev !== 'ollama') {
                     addMessage('system', `⚠️ Running on ${dev.toUpperCase()} (CPU) — slower. WebGPU (Chrome/Edge 113+) is much faster.`);
                 }
 
@@ -210,9 +194,32 @@
             } catch (err) {
                 progress.hidden = true;
                 setStatus('');
-                addMessage('system', `❌ Failed to load model: ${err.message}`);
+                addMessage('system', `❌ Failed to load model: ${describeLoadError(err)}`);
                 console.error(err);
             }
+        }
+
+        // Give the user something actionable for the most common Ollama
+        // connection failures (server not running, model not pulled, CORS).
+        function describeLoadError(err) {
+            const msg = String(err && err.message || err);
+            if (/Could not reach Ollama/.test(msg)) {
+                return (
+                    `${msg} Start it with "ollama serve" (or open the Ollama app), ` +
+                    `then reload this page.`
+                );
+            }
+            if (/is not available on this Ollama server/.test(msg)) {
+                return msg; // already actionable ("ollama pull <model>")
+            }
+            if (/Failed to fetch/.test(msg)) {
+                return (
+                    `${msg} — this usually means Ollama isn't running at ` +
+                    `${cfg.ollamaBaseUrl}, or a browser extension/CORS policy is ` +
+                    `blocking the request.`
+                );
+            }
+            return msg;
         }
 
         // File tools need a user-granted directory. Picking it must happen in a

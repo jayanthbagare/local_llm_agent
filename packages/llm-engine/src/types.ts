@@ -98,7 +98,7 @@ export interface ModelInfo {
   name: string;
   contextLength: number;
   isLoaded: boolean;
-  device: 'webgpu' | 'wasm' | 'none';
+  device: 'webgpu' | 'wasm' | 'ollama' | 'none';
   memoryUsage?: string;
 }
 

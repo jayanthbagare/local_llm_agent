@@ -187,9 +187,19 @@ export class NanoAgent {
           yield { type: 'tool_result', tool: toolCall.name, result: toolResult };
 
           const formattedResult = this._formatToolResult(toolCall.name, toolResult);
+          // Record what the model actually said. When there's no prose
+          // reasoning (a pure tool-call response, which is the clean/ideal
+          // case), fall back to the tool call itself rather than a generic
+          // placeholder — a fixed placeholder like "Calling X" would be
+          // identical across every tool-call turn, and weaker models will
+          // start pattern-matching their own repeated history and emit that
+          // literal placeholder text back out instead of a real tool call
+          // or final answer.
           this.messages.push({
             role: 'assistant',
-            content: reasoning || `Calling ${toolCall.name}`,
+            content:
+              reasoning ||
+              `\`\`\`json\n${JSON.stringify({ name: toolCall.name, arguments: toolCall.arguments })}\n\`\`\``,
           });
           this.messages.push({
             role: 'tool',

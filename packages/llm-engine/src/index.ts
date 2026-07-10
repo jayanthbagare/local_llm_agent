@@ -18,12 +18,18 @@ export {
   setTransformersSpecifier,
   TRANSFORMERS_SPECIFIER,
 } from './transformers';
+export { OllamaEngine, createOllamaEngine, type OllamaEngineOptions } from './ollama';
 
 /** Factory: auto-detects WebGPU availability and returns appropriate engine */
-export async function createEngine(options?: { prefer?: 'transformers' | 'webgpu' | 'wasm' | 'simulated' }): Promise<import('./types').LLMEngine> {
+export async function createEngine(options?: { prefer?: 'transformers' | 'webgpu' | 'wasm' | 'simulated' | 'ollama' }): Promise<import('./types').LLMEngine> {
   if (options?.prefer === 'simulated') {
     const { createSimulatedEngine } = await import('./simulated');
     return createSimulatedEngine();
+  }
+
+  if (options?.prefer === 'ollama') {
+    const { createOllamaEngine } = await import('./ollama');
+    return createOllamaEngine();
   }
 
   // Real in-browser inference via transformers.js (WebGPU or WASM).

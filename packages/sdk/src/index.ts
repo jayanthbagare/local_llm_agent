@@ -2,7 +2,7 @@
 // One import to get the full local LLM agent experience.
 // Composes llm-engine, nano-agent, skill-store, and tool-bridge.
 
-import { SimulatedEngine, WebGPUEngine, TransformersEngine } from '@local-llm-agent/llm-engine';
+import { SimulatedEngine, WebGPUEngine, TransformersEngine, OllamaEngine } from '@local-llm-agent/llm-engine';
 import { NanoAgent } from '@local-llm-agent/nano-agent';
 import { SkillStore } from '@local-llm-agent/skill-store';
 import { BUILTIN_SKILLS } from '@local-llm-agent/skill-store';
@@ -256,6 +256,7 @@ const SDK = {
   SimulatedEngine,
   WebGPUEngine,
   TransformersEngine,
+  OllamaEngine,
   NanoAgent,
   SkillStore,
   ToolBridge,
@@ -264,6 +265,13 @@ const SDK = {
 };
 
 export default SDK;
+
+export {
+  SimulatedEngine,
+  WebGPUEngine,
+  TransformersEngine,
+  OllamaEngine,
+};
 
 // Re-export the harness API for multi-task, event-driven agents.
 export {
@@ -314,6 +322,7 @@ export type {
   ToolCall,
   ToolDefinition,
   ModelInfo,
+  OllamaEngineOptions,
 } from '@local-llm-agent/llm-engine';
 
 export type {

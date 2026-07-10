@@ -18,12 +18,16 @@ echo "Open your browser to http://localhost:8000"
 echo "(First model load downloads weights from HuggingFace; cached afterwards.)"
 
 # WebGPU + cross-origin isolation notes:
-# transformers.js WASM fallback benefits from COOP/COEP headers, but WebGPU
-# works without them. Python's simple server is fine for the WebGPU path.
+# onnxruntime-web needs the page to be "cross-origin isolated" (COOP/COEP
+# headers) to use SharedArrayBuffer-backed multithreaded WASM. Without these
+# headers it silently falls back to a single WASM thread, but some browsers
+# have been observed to hit an Emscripten "Aborted()" trap in
+# ort-wasm-simd-threaded.jsep.wasm without isolation -- so we always serve
+# with these headers via scripts/serve.py rather than the plain http.server.
 if command -v python3 &> /dev/null; then
-    python3 -m http.server 8000
+    python3 scripts/serve.py 8000
 elif command -v python &> /dev/null; then
-    python -m SimpleHTTPServer 8000
+    python scripts/serve.py 8000
 else
     echo "No Python installation found. Please install Python or use another local server."
 fi
