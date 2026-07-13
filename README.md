@@ -39,12 +39,20 @@ for await (const event of agent.run('What is 256 * 128?')) {
 
 ```
 @local-llm-agent/sdk  ←─ One import, everything unified
-    ├── @local-llm-agent/llm-engine    Real WebGPU/WASM inference (transformers.js)
+    ├── @local-llm-agent/llm-engine    Real WebGPU/WASM (transformers.js) or local Ollama inference
     ├── @local-llm-agent/nano-agent    ReAct agent loop (~5KB gzipped)
     ├── @local-llm-agent/skill-store   Skill registry + IndexedDB cache
     ├── @local-llm-agent/tool-bridge   REST, MCP, sandboxed function execution
     └── @local-llm-agent/harness       Multi-task, event-driven orchestration
 ```
+
+### Inference engines
+
+| Engine | Where it runs | Notes |
+|--------|---------------|-------|
+| `TransformersEngine` | In-browser (WebGPU, WASM fallback) | Default. No server, no API keys. |
+| `OllamaEngine` | Local [Ollama](https://ollama.com) server (Node/CLI) | Streams real tokens from `ollama serve` over `/api/chat`. Lets an agent use much larger/more capable models than fit in a browser's WASM/WebGPU memory ceiling. Disables extended "thinking" mode by default so responses land in `content` instead of silently exhausting the token budget on hidden chain-of-thought. |
+| `SimulatedEngine` | Anywhere | Deterministic, no model download — used for tests/dev. |
 
 ## Skill Files
 
@@ -70,13 +78,19 @@ resultTemplate: |
 **Built-in skills** (enable via `createAgent({ skills: [...] })`):
 | Skill id | Type | Description |
 |----------|------|-------------|
-| `web-search` | REST | Wikipedia-backed web search (no API key) |
+| `web-search` | REST | **Real general web search** via DuckDuckGo's HTML results page (no API key). Reaches arbitrary sites — GitHub, museum/library catalogs, government docs, news — not just Wikipedia. |
 | `wikipedia` | REST | Read a specific Wikipedia page (`find` a keyword) |
 | `http-request` | REST | Call any REST/API endpoint (GET/POST/…) |
 | `file-read` | Browser API | Read a file from a user-granted folder |
 | `file-write` | Browser API | Write a file in the granted folder |
 | `file-glob` | Browser API | Find files by glob (`**/*.ts`) |
 | `mcp-call` | MCP | Invoke a tool on an MCP server (SSE) |
+
+> `web-search` used to be Wikipedia-only, which meant the agent could never
+> reach GitHub, news, or non-Wikipedia reference sites — a real capability
+> ceiling confirmed by the GAIA benchmark below. It now parses DuckDuckGo's
+> HTML results page (a browser User-Agent + Referer header avoids the
+> bot-detection challenge page for light, occasional use).
 
 File tools use the browser's File System Access API — the user picks a folder
 once. See `docs/api.md` → **Built-in Skills** for details and the
@@ -199,6 +213,49 @@ harness.runTask('chat', 'Hello');   // manual run
 
 See `examples/harness-demo/` (manual + event + schedule on one page) and
 `docs/api.md` → **@local-llm-agent/harness** for the full API.
+
+
+## Using a local Ollama model (bigger than a browser can hold)
+
+For models too large for WebGPU/WASM memory, point the agent at a local
+[Ollama](https://ollama.com) server instead of the browser engine:
+
+```ts
+import { createAgent, OllamaEngine } from '@local-llm-agent/sdk';
+
+const engine = new OllamaEngine({ baseUrl: 'http://localhost:11434', model: 'qwen2.5:7b' });
+const agent = await createAgent({ engine, skills: ['web-search', 'wikipedia'] });
+```
+
+Requires `ollama serve` running locally with the model pulled (`ollama pull qwen2.5:7b`).
+`index.html` uses this engine by default (see `window.AGENT_CONFIG`).
+
+## GAIA benchmark harness
+
+`eval/scripts/run-gaia.ts` runs `NanoAgent` + `OllamaEngine` against the
+[GAIA benchmark](https://huggingface.co/datasets/gaia-benchmark/GAIA) validation
+set (no-file-attachment subset) and scores answers with GAIA's own exact-match
+rule (ported from smolagents' `gaia_scorer.py`):
+
+```bash
+npx tsx eval/scripts/run-gaia.ts --model qwen2.5:7b --limit 10
+```
+
+One Ollama model is tested at a time (RAM-limited dev machine) — the script
+never loads more than the one model passed via `--model`.
+
+**Findings so far:** switching `web-search` from Wikipedia-only to real
+DuckDuckGo search took a 10-task smoke test (qwen2.5:7b) from **0/10 → 1/10**
+correct, with several additional near-misses (right data, wrong format/off-by-
+one) that were previously impossible because the task required GitHub/museum
+sources the old tool couldn't reach at all. A fuller 127-task run scored
+**6/127 (4.7%)** overall (Level 1: 2/42, Level 2: 4/66, Level 3: 0/19),
+averaging ~41s and ~3.3 steps per task — illustrating how much headroom
+remains for a 7B local model on multi-step, tool-using benchmark tasks.
+
+The GAIA dataset and per-run result files are **gitignored**: GAIA's license
+prohibits resharing the dataset outside a gated/private repo, and result files
+quote verbatim question/answer text from it.
 
 
 ## License

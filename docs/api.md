@@ -4,7 +4,7 @@
 
 ```
 @local-llm-agent/sdk  ← One import, everything unified
-    ├── llm-engine    Real WebGPU/WASM inference (transformers.js)
+    ├── llm-engine    Real WebGPU/WASM (transformers.js) or local Ollama inference
     ├── nano-agent    ReAct agent loop (~5KB gzipped)
     ├── skill-store   Skill registry + IndexedDB cache
     ├── tool-bridge   REST, MCP, sandboxed function execution
@@ -68,11 +68,47 @@ interface LLMEngine {
 | Class | Description | Requires |
 |-------|-------------|----------|
 | `TransformersEngine` | **Real** in-browser inference via [transformers.js](https://github.com/huggingface/transformers.js) — loads a quantized ONNX model and runs it on WebGPU (WASM fallback), streaming real tokens. **Default** in browsers. | Browser, `@huggingface/transformers` |
+| `OllamaEngine` | **Real** inference via a locally running [Ollama](https://ollama.com) server (`ollama serve`, default `http://localhost:11434`) over `/api/chat` NDJSON streaming. Lets an agent use much larger/more capable models than fit inside a browser's WASM/WebGPU memory ceiling. | Node/CLI, local `ollama serve` process |
 | `SimulatedEngine` | Deterministic simulation for tests/dev. | Nothing — works everywhere |
 | `WebGPUEngine` | Legacy ONNX Runtime Web scaffold (placeholder inference). | Browser, onnxruntime-web |
 
 `createAgent()` selects `TransformersEngine` automatically in a browser, and
-`SimulatedEngine` in Node (or when you pass `simulated: true`).
+`SimulatedEngine` in Node (or when you pass `simulated: true`). Pass an
+explicit `engine: new OllamaEngine({ model: 'qwen2.5:7b' })` to use Ollama
+instead (see below).
+
+### `OllamaEngine`
+
+```ts
+import { createAgent, OllamaEngine } from '@local-llm-agent/sdk';
+
+const engine = new OllamaEngine({
+  baseUrl: 'http://localhost:11434',  // default
+  model: 'qwen2.5:7b',                // any pulled Ollama model tag
+  think: false,                       // default: disable extended "thinking"
+});
+
+const agent = await createAgent({ engine, skills: ['web-search', 'wikipedia'] });
+```
+
+```ts
+interface OllamaEngineOptions {
+  baseUrl?: string;   // default: 'http://localhost:11434'
+  model?: string;     // Ollama model tag, e.g. 'llama3.2', 'qwen2.5:7b'
+  think?: boolean;    // default: false
+}
+```
+
+> Some Ollama models (e.g. "thinking"-capable ones like gemma4) stream their
+> chain-of-thought in a separate `message.thinking` field and only emit the
+> final answer in `message.content` once reasoning is done. If the model's
+> thinking budget exceeds `maxTokens`, the response comes back empty (finish
+> reason `length`) with no visible answer at all. `think: false` (the default)
+> disables extended thinking so responses always land in `content`.
+>
+> Requires `ollama serve` running locally with the model already pulled
+> (`ollama pull qwen2.5:7b`). `ModelInfo.device` reports `'ollama'` for this
+> engine.
 
 ### Model caching (download once)
 
@@ -423,7 +459,7 @@ is needed. Import the definitions directly with `import { BUILTIN_SKILLS } from 
 
 | Skill id | Type | What it does | Parameters |
 |----------|------|--------------|------------|
-| `web-search` | `rest` | Wikipedia-backed web search; returns the top matching article snippets (CORS-safe, no key). | `query` |
+| `web-search` | `rest` | **Real general web search** — parses DuckDuckGo's HTML results page (`html.duckduckgo.com/html/`) and returns the top result titles, snippets, and URLs. Reaches arbitrary sites (GitHub, museum/library catalogs, government docs, news), not just Wikipedia. | `query` |
 | `wikipedia` | `rest` | Read a specific Wikipedia article's text; `find` returns the passage around a keyword (e.g. "perigee"). | `title`, `find?`, `maxChars?` |
 | `http-request` | `rest` | Call any REST/API endpoint (GET/POST/PUT/DELETE/PATCH). | `url`, `method?`, `body?` |
 | `file-read` | `browser-api` | Read a file from a user-granted local folder. | `path` |
@@ -431,9 +467,17 @@ is needed. Import the definitions directly with `import { BUILTIN_SKILLS } from 
 | `file-glob` | `browser-api` | Find files by glob pattern (`**/*.ts`, `src/*.md`). | `pattern` |
 | `mcp-call` | `mcp` | Invoke a named tool on an MCP server (SSE). | `serverUrl`, `toolName`, `arguments?` |
 
-> `web-search` and `wikipedia` use Wikipedia's `origin=*` API (CORS-safe from the
-> browser). The old DuckDuckGo Instant Answer API returned nothing for general
-> queries, so it was replaced.
+> **`web-search` history:** it was originally Wikipedia's `origin=*` search API
+> (CORS-safe from the browser), replacing an even earlier DuckDuckGo Instant
+> Answer API that returned nothing for general queries. But a Wikipedia-only
+> search meant the agent could never reach GitHub, news, or other non-Wikipedia
+> reference sites — a real capability ceiling confirmed by running the GAIA
+> benchmark (see **GAIA benchmark harness** below). It now parses DuckDuckGo's
+> HTML results page instead, using a browser User-Agent + Referer header to
+> avoid the bot-detection "anomaly" challenge page (light, occasional use only
+> — this endpoint is undocumented/ToS-restricted for heavy automation). If it
+> ever returns a blocked/no-results message, fall back to the `wikipedia` tool.
+> `wikipedia` still uses Wikipedia's own CORS-safe API.
 
 ```ts
 const agent = await createAgent({
@@ -621,6 +665,53 @@ import {
 ```
 
 See `examples/harness-demo/` for a page running manual + event + schedule tasks.
+
+---
+
+## GAIA benchmark harness
+
+`eval/scripts/run-gaia.ts` runs `NanoAgent` (with `OllamaEngine`) against the
+[GAIA benchmark](https://huggingface.co/datasets/gaia-benchmark/GAIA)
+validation set's no-file-attachment subset, scores each answer with GAIA's own
+exact-match rule (`eval/scripts/gaia-scorer.ts`, ported from smolagents'
+`gaia_scorer.py`), and writes a results JSON.
+
+```bash
+npx tsx eval/scripts/run-gaia.ts --model qwen2.5:7b --limit 10
+npx tsx eval/scripts/run-gaia.ts --model llama3.2 --limit 10 --offset 10
+```
+
+| Flag | Default | Description |
+|------|---------|--------------|
+| `--model` | `qwen2.5:7b` | Ollama model tag to run |
+| `--limit` | `10` | Number of tasks to run |
+| `--offset` | `0` | Skip this many tasks first |
+| `--level` | (all) | Restrict to GAIA difficulty level 1/2/3 |
+| `--base-url` | `http://localhost:11434` | Ollama server URL |
+| `--out` | auto-named | Output JSON path |
+| `--max-steps` | `10` | Agent ReAct step budget per task |
+| `--max-tokens` | `800` | Token budget per generation |
+| `--temperature` | `0.2` | Sampling temperature |
+| `--timeout-ms` | `120000` | Per-task timeout before aborting |
+
+The agent is configured with `web-search`, `wikipedia`, and a sandboxed
+`calculator` tool, and a system prompt that requires it to look up every
+needed fact individually, always use the calculator (never compute in its
+head), and answer with a short `FINAL:`-prefixed value. Only one Ollama model
+is loaded/tested at a time — the script does not run models concurrently
+(useful on RAM-limited dev machines).
+
+**Findings:** switching `web-search` from Wikipedia-only to real DuckDuckGo
+search (see **Built-in Skills** above) took a 10-task smoke test (qwen2.5:7b)
+from **0/10 → 1/10** correct, plus several additional near-misses that were
+previously impossible (task required GitHub/museum sources the old tool
+couldn't reach). A fuller 127-task run scored **6/127 (4.7%)** overall
+(Level 1: 2/42, Level 2: 4/66, Level 3: 0/19; ~41s and ~3.3 steps/task avg).
+
+> The GAIA dataset (`eval/gaia/`) and per-run result files (`eval/results/`)
+> are **gitignored**. GAIA's license prohibits resharing the dataset outside a
+> gated/private repo, and result files quote verbatim question/answer text
+> from it — never commit either directory.
 
 ---
 
