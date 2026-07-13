@@ -1,0 +1,732 @@
+[
+  {
+    "id": "C1",
+    "name": "Acme Manufacturing",
+    "period": "Q3",
+    "workCenters": [
+      {
+        "id": "WC1",
+        "name": "Cutting",
+        "availableMinutes": 184
+      },
+      {
+        "id": "WC2",
+        "name": "Assembly",
+        "availableMinutes": 3840
+      },
+      {
+        "id": "WC3",
+        "name": "Finishing",
+        "availableMinutes": 3110
+      },
+      {
+        "id": "WC4",
+        "name": "Packing",
+        "availableMinutes": 2860
+      }
+    ],
+    "products": [
+      {
+        "id": "P1",
+        "name": "Product A",
+        "price": 95,
+        "totallyVariableCost": 45,
+        "throughputPerUnit": 50,
+        "demandUnits": 80,
+        "routing": {
+          "WC1": 4,
+          "WC2": 9,
+          "WC3": 6,
+          "WC4": 11
+        }
+      },
+      {
+        "id": "P2",
+        "name": "Product B",
+        "price": 145,
+        "totallyVariableCost": 85,
+        "throughputPerUnit": 60,
+        "demandUnits": 40,
+        "routing": {
+          "WC1": 15,
+          "WC2": 13,
+          "WC3": 6,
+          "WC4": 4
+        }
+      },
+      {
+        "id": "P3",
+        "name": "Product C",
+        "price": 100,
+        "totallyVariableCost": 50,
+        "throughputPerUnit": 50,
+        "demandUnits": 70,
+        "routing": {
+          "WC1": 2,
+          "WC2": 9,
+          "WC3": 14,
+          "WC4": 2
+        }
+      },
+      {
+        "id": "P4",
+        "name": "Product D",
+        "price": 110,
+        "totallyVariableCost": 80,
+        "throughputPerUnit": 30,
+        "demandUnits": 40,
+        "routing": {
+          "WC1": 2,
+          "WC2": 4,
+          "WC3": 13,
+          "WC4": 9
+        }
+      },
+      {
+        "id": "P5",
+        "name": "Product E",
+        "price": 40,
+        "totallyVariableCost": 30,
+        "throughputPerUnit": 10,
+        "demandUnits": 90,
+        "routing": {
+          "WC1": 9,
+          "WC2": 14,
+          "WC3": 6,
+          "WC4": 8
+        }
+      }
+    ],
+    "operatingExpenses": 2010
+  },
+  {
+    "id": "C2",
+    "name": "Blue Ridge Industries",
+    "period": "Q3",
+    "workCenters": [
+      {
+        "id": "WC1",
+        "name": "Cutting",
+        "availableMinutes": 3370
+      },
+      {
+        "id": "WC2",
+        "name": "Assembly",
+        "availableMinutes": 1970
+      },
+      {
+        "id": "WC3",
+        "name": "Finishing",
+        "availableMinutes": 1444
+      },
+      {
+        "id": "WC4",
+        "name": "Packing",
+        "availableMinutes": 1810
+      }
+    ],
+    "products": [
+      {
+        "id": "P1",
+        "name": "Product A",
+        "price": 130,
+        "totallyVariableCost": 60,
+        "throughputPerUnit": 70,
+        "demandUnits": 60,
+        "routing": {
+          "WC1": 5,
+          "WC2": 6,
+          "WC3": 24,
+          "WC4": 3
+        }
+      },
+      {
+        "id": "P2",
+        "name": "Product B",
+        "price": 120,
+        "totallyVariableCost": 60,
+        "throughputPerUnit": 60,
+        "demandUnits": 80,
+        "routing": {
+          "WC1": 15,
+          "WC2": 3,
+          "WC3": 16,
+          "WC4": 8
+        }
+      },
+      {
+        "id": "P3",
+        "name": "Product C",
+        "price": 155,
+        "totallyVariableCost": 110,
+        "throughputPerUnit": 45,
+        "demandUnits": 20,
+        "routing": {
+          "WC1": 2,
+          "WC2": 7,
+          "WC3": 9,
+          "WC4": 11
+        }
+      },
+      {
+        "id": "P4",
+        "name": "Product D",
+        "price": 150,
+        "totallyVariableCost": 110,
+        "throughputPerUnit": 40,
+        "demandUnits": 80,
+        "routing": {
+          "WC1": 16,
+          "WC2": 6,
+          "WC3": 12,
+          "WC4": 4
+        }
+      }
+    ],
+    "operatingExpenses": 3560
+  },
+  {
+    "id": "C3",
+    "name": "Summit Fabrication",
+    "period": "Q3",
+    "workCenters": [
+      {
+        "id": "WC1",
+        "name": "Cutting",
+        "availableMinutes": 2990
+      },
+      {
+        "id": "WC2",
+        "name": "Assembly",
+        "availableMinutes": 2640
+      },
+      {
+        "id": "WC3",
+        "name": "Finishing",
+        "availableMinutes": 1105
+      },
+      {
+        "id": "WC4",
+        "name": "Packing",
+        "availableMinutes": 2880
+      }
+    ],
+    "products": [
+      {
+        "id": "P1",
+        "name": "Product A",
+        "price": 110,
+        "totallyVariableCost": 70,
+        "throughputPerUnit": 40,
+        "demandUnits": 80,
+        "routing": {
+          "WC1": 6,
+          "WC2": 8,
+          "WC3": 14,
+          "WC4": 12
+        }
+      },
+      {
+        "id": "P2",
+        "name": "Product B",
+        "price": 160,
+        "totallyVariableCost": 70,
+        "throughputPerUnit": 90,
+        "demandUnits": 50,
+        "routing": {
+          "WC1": 10,
+          "WC2": 6,
+          "WC3": 15,
+          "WC4": 12
+        }
+      },
+      {
+        "id": "P3",
+        "name": "Product C",
+        "price": 75,
+        "totallyVariableCost": 35,
+        "throughputPerUnit": 40,
+        "demandUnits": 100,
+        "routing": {
+          "WC1": 3,
+          "WC2": 9,
+          "WC3": 14,
+          "WC4": 3
+        }
+      },
+      {
+        "id": "P4",
+        "name": "Product D",
+        "price": 160,
+        "totallyVariableCost": 110,
+        "throughputPerUnit": 50,
+        "demandUnits": 80,
+        "routing": {
+          "WC1": 12,
+          "WC2": 5,
+          "WC3": 8,
+          "WC4": 4
+        }
+      }
+    ],
+    "operatingExpenses": 3780
+  },
+  {
+    "id": "C4",
+    "name": "Coastal Components Co.",
+    "period": "Q3",
+    "workCenters": [
+      {
+        "id": "WC1",
+        "name": "Cutting",
+        "availableMinutes": 1300
+      },
+      {
+        "id": "WC2",
+        "name": "Assembly",
+        "availableMinutes": 388
+      },
+      {
+        "id": "WC3",
+        "name": "Finishing",
+        "availableMinutes": 2780
+      },
+      {
+        "id": "WC4",
+        "name": "Packing",
+        "availableMinutes": 2160
+      }
+    ],
+    "products": [
+      {
+        "id": "P1",
+        "name": "Product A",
+        "price": 145,
+        "totallyVariableCost": 90,
+        "throughputPerUnit": 55,
+        "demandUnits": 20,
+        "routing": {
+          "WC1": 13,
+          "WC2": 11,
+          "WC3": 15,
+          "WC4": 15
+        }
+      },
+      {
+        "id": "P2",
+        "name": "Product B",
+        "price": 65,
+        "totallyVariableCost": 35,
+        "throughputPerUnit": 30,
+        "demandUnits": 60,
+        "routing": {
+          "WC1": 4,
+          "WC2": 2,
+          "WC3": 12,
+          "WC4": 12
+        }
+      },
+      {
+        "id": "P3",
+        "name": "Product C",
+        "price": 75,
+        "totallyVariableCost": 50,
+        "throughputPerUnit": 25,
+        "demandUnits": 50,
+        "routing": {
+          "WC1": 2,
+          "WC2": 5,
+          "WC3": 16,
+          "WC4": 10
+        }
+      },
+      {
+        "id": "P4",
+        "name": "Product D",
+        "price": 160,
+        "totallyVariableCost": 110,
+        "throughputPerUnit": 50,
+        "demandUnits": 30,
+        "routing": {
+          "WC1": 10,
+          "WC2": 6,
+          "WC3": 7,
+          "WC4": 8
+        }
+      }
+    ],
+    "operatingExpenses": 2240
+  },
+  {
+    "id": "C5",
+    "name": "Ironvale Works",
+    "period": "Q3",
+    "workCenters": [
+      {
+        "id": "WC1",
+        "name": "Cutting",
+        "availableMinutes": 2600
+      },
+      {
+        "id": "WC2",
+        "name": "Assembly",
+        "availableMinutes": 2340
+      },
+      {
+        "id": "WC3",
+        "name": "Finishing",
+        "availableMinutes": 4070
+      },
+      {
+        "id": "WC4",
+        "name": "Packing",
+        "availableMinutes": 3940
+      }
+    ],
+    "products": [
+      {
+        "id": "P1",
+        "name": "Product A",
+        "price": 105,
+        "totallyVariableCost": 55,
+        "throughputPerUnit": 50,
+        "demandUnits": 40,
+        "routing": {
+          "WC1": 6,
+          "WC2": 25,
+          "WC3": 6,
+          "WC4": 12
+        }
+      },
+      {
+        "id": "P2",
+        "name": "Product B",
+        "price": 65,
+        "totallyVariableCost": 45,
+        "throughputPerUnit": 20,
+        "demandUnits": 80,
+        "routing": {
+          "WC1": 6,
+          "WC2": 3,
+          "WC3": 6,
+          "WC4": 2
+        }
+      },
+      {
+        "id": "P3",
+        "name": "Product C",
+        "price": 110,
+        "totallyVariableCost": 75,
+        "throughputPerUnit": 35,
+        "demandUnits": 60,
+        "routing": {
+          "WC1": 7,
+          "WC2": 12,
+          "WC3": 15,
+          "WC4": 14
+        }
+      },
+      {
+        "id": "P4",
+        "name": "Product D",
+        "price": 90,
+        "totallyVariableCost": 65,
+        "throughputPerUnit": 25,
+        "demandUnits": 90,
+        "routing": {
+          "WC1": 9,
+          "WC2": 14,
+          "WC3": 15,
+          "WC4": 8
+        }
+      },
+      {
+        "id": "P5",
+        "name": "Product E",
+        "price": 55,
+        "totallyVariableCost": 30,
+        "throughputPerUnit": 25,
+        "demandUnits": 90,
+        "routing": {
+          "WC1": 5,
+          "WC2": 7,
+          "WC3": 10,
+          "WC4": 16
+        }
+      }
+    ],
+    "operatingExpenses": 4490
+  },
+  {
+    "id": "C6",
+    "name": "Redwood Precision Parts",
+    "period": "Q3",
+    "workCenters": [
+      {
+        "id": "WC1",
+        "name": "Cutting",
+        "availableMinutes": 3820
+      },
+      {
+        "id": "WC2",
+        "name": "Assembly",
+        "availableMinutes": 3880
+      },
+      {
+        "id": "WC3",
+        "name": "Finishing",
+        "availableMinutes": 4130
+      },
+      {
+        "id": "WC4",
+        "name": "Packing",
+        "availableMinutes": 1140
+      }
+    ],
+    "products": [
+      {
+        "id": "P1",
+        "name": "Product A",
+        "price": 135,
+        "totallyVariableCost": 55,
+        "throughputPerUnit": 80,
+        "demandUnits": 90,
+        "routing": {
+          "WC1": 11,
+          "WC2": 14,
+          "WC3": 14,
+          "WC4": 10
+        }
+      },
+      {
+        "id": "P2",
+        "name": "Product B",
+        "price": 80,
+        "totallyVariableCost": 45,
+        "throughputPerUnit": 35,
+        "demandUnits": 90,
+        "routing": {
+          "WC1": 12,
+          "WC2": 7,
+          "WC3": 16,
+          "WC4": 11
+        }
+      },
+      {
+        "id": "P3",
+        "name": "Product C",
+        "price": 80,
+        "totallyVariableCost": 35,
+        "throughputPerUnit": 45,
+        "demandUnits": 30,
+        "routing": {
+          "WC1": 7,
+          "WC2": 2,
+          "WC3": 3,
+          "WC4": 11
+        }
+      },
+      {
+        "id": "P4",
+        "name": "Product D",
+        "price": 130,
+        "totallyVariableCost": 55,
+        "throughputPerUnit": 75,
+        "demandUnits": 90,
+        "routing": {
+          "WC1": 8,
+          "WC2": 12,
+          "WC3": 4,
+          "WC4": 6
+        }
+      },
+      {
+        "id": "P5",
+        "name": "Product E",
+        "price": 55,
+        "totallyVariableCost": 40,
+        "throughputPerUnit": 15,
+        "demandUnits": 40,
+        "routing": {
+          "WC1": 8,
+          "WC2": 10,
+          "WC3": 12,
+          "WC4": 13
+        }
+      }
+    ],
+    "operatingExpenses": 6740
+  },
+  {
+    "id": "C7",
+    "name": "Harbor Point Machining",
+    "period": "Q3",
+    "workCenters": [
+      {
+        "id": "WC1",
+        "name": "Cutting",
+        "availableMinutes": 1220
+      },
+      {
+        "id": "WC2",
+        "name": "Assembly",
+        "availableMinutes": 2560
+      },
+      {
+        "id": "WC3",
+        "name": "Finishing",
+        "availableMinutes": 2030
+      },
+      {
+        "id": "WC4",
+        "name": "Packing",
+        "availableMinutes": 750
+      }
+    ],
+    "products": [
+      {
+        "id": "P1",
+        "name": "Product A",
+        "price": 80,
+        "totallyVariableCost": 50,
+        "throughputPerUnit": 30,
+        "demandUnits": 30,
+        "routing": {
+          "WC1": 9,
+          "WC2": 6,
+          "WC3": 9,
+          "WC4": 10
+        }
+      },
+      {
+        "id": "P2",
+        "name": "Product B",
+        "price": 120,
+        "totallyVariableCost": 70,
+        "throughputPerUnit": 50,
+        "demandUnits": 30,
+        "routing": {
+          "WC1": 2,
+          "WC2": 4,
+          "WC3": 16,
+          "WC4": 3
+        }
+      },
+      {
+        "id": "P3",
+        "name": "Product C",
+        "price": 145,
+        "totallyVariableCost": 85,
+        "throughputPerUnit": 60,
+        "demandUnits": 60,
+        "routing": {
+          "WC1": 3,
+          "WC2": 14,
+          "WC3": 2,
+          "WC4": 7
+        }
+      },
+      {
+        "id": "P4",
+        "name": "Product D",
+        "price": 65,
+        "totallyVariableCost": 35,
+        "throughputPerUnit": 30,
+        "demandUnits": 70,
+        "routing": {
+          "WC1": 3,
+          "WC2": 16,
+          "WC3": 13,
+          "WC4": 11
+        }
+      }
+    ],
+    "operatingExpenses": 2550
+  },
+  {
+    "id": "C8",
+    "name": "Prairie Steel Products",
+    "period": "Q3",
+    "workCenters": [
+      {
+        "id": "WC1",
+        "name": "Cutting",
+        "availableMinutes": 4540
+      },
+      {
+        "id": "WC2",
+        "name": "Assembly",
+        "availableMinutes": 4370
+      },
+      {
+        "id": "WC3",
+        "name": "Finishing",
+        "availableMinutes": 4050
+      },
+      {
+        "id": "WC4",
+        "name": "Packing",
+        "availableMinutes": 2508
+      }
+    ],
+    "products": [
+      {
+        "id": "P1",
+        "name": "Product A",
+        "price": 70,
+        "totallyVariableCost": 35,
+        "throughputPerUnit": 35,
+        "demandUnits": 80,
+        "routing": {
+          "WC1": 10,
+          "WC2": 16,
+          "WC3": 2,
+          "WC4": 27
+        }
+      },
+      {
+        "id": "P2",
+        "name": "Product B",
+        "price": 80,
+        "totallyVariableCost": 50,
+        "throughputPerUnit": 30,
+        "demandUnits": 90,
+        "routing": {
+          "WC1": 10,
+          "WC2": 5,
+          "WC3": 16,
+          "WC4": 16
+        }
+      },
+      {
+        "id": "P3",
+        "name": "Product C",
+        "price": 70,
+        "totallyVariableCost": 40,
+        "throughputPerUnit": 30,
+        "demandUnits": 90,
+        "routing": {
+          "WC1": 16,
+          "WC2": 12,
+          "WC3": 10,
+          "WC4": 14
+        }
+      },
+      {
+        "id": "P4",
+        "name": "Product D",
+        "price": 75,
+        "totallyVariableCost": 45,
+        "throughputPerUnit": 30,
+        "demandUnits": 80,
+        "routing": {
+          "WC1": 10,
+          "WC2": 12,
+          "WC3": 10,
+          "WC4": 10
+        }
+      }
+    ],
+    "operatingExpenses": 3300
+  }
+]

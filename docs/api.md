@@ -715,6 +715,103 @@ couldn't reach). A fuller 127-task run scored **6/127 (4.7%)** overall
 
 ---
 
+## ERP throughput-accounting benchmark
+
+A second benchmark for when the goal is a **domain-specific task set over
+ERP-shaped data** instead of a general-knowledge benchmark like GAIA. Unlike
+GAIA, the dataset is entirely synthetic (generated deterministically by a
+seeded PRNG), so it has no license restriction and is committed to the repo
+(`eval/erp/companies.json`, `eval/erp/tasks.json`).
+
+It tests whether an agent applies Theory-of-Constraints **throughput
+accounting** — not traditional cost/margin accounting — to a synthetic
+manufacturer's period extract: work centers (available minutes), products
+(price, totally variable cost, market demand, per-work-center routing
+minutes), and operating expenses.
+
+```bash
+# 1. Generate (or regenerate) the dataset + tasks
+npx tsx eval/scripts/generate-erp-benchmark.ts --companies 8 --seed 42
+
+# 2. Run the agent against it
+npx tsx eval/scripts/run-erp-benchmark.ts --model qwen2.5:7b --limit 16
+```
+
+| Flag | Default | Description |
+|------|---------|--------------|
+| `--model` | `qwen2.5:7b` | Ollama model tag to run |
+| `--limit` | all tasks | Number of tasks to run |
+| `--offset` | `0` | Skip this many tasks first |
+| `--level` | (all) | Restrict to difficulty level 1/2/3 |
+| `--type` | (all) | Restrict to one task type (e.g. `net_profit`) |
+| `--base-url` | `http://localhost:11434` | Ollama server URL |
+| `--max-steps` | `8` | Agent ReAct step budget per task |
+| `--max-tokens` | `600` | Token budget per generation |
+| `--timeout-ms` | `90000` | Per-task timeout before aborting |
+
+### Dataset generator (`generate-erp-benchmark.ts`)
+
+For each synthetic company: 4 work centers, 4–5 products (price, totally
+variable cost → per-unit throughput, market demand, minutes-per-unit routing
+at each work center), and operating expenses. Exactly one work center is
+chosen as the binding **constraint** (available minutes less than what's
+needed to satisfy full demand for every product); the generator nudges
+routing data until the "highest $-throughput" product and the "highest T/CU
+at the constraint" product genuinely diverge, so a naive margin-based
+strategy and the correct throughput-accounting strategy disagree — the
+interesting case throughput accounting is designed to catch. All derived
+figures (optimal mix, total throughput, net profit, the T/CU vs.
+margin-ranking mismatch) are independently computable from the raw data, so
+ground truth is self-consistent and can be re-verified from `companies.json`
+alone.
+
+Each company yields 8 tasks across 3 difficulty levels:
+
+| Level | Type | Example |
+|-------|------|---------|
+| 1 | `throughput_per_unit` | "What is Product A's per-unit throughput?" |
+| 1 | `constraint_identification` | "Which work center is the constraint?" |
+| 2 | `tcu_ranking` | "Which product has the highest T/CU at the constraint?" |
+| 2 | `throughput_per_unit_ranking` | "Which product has the highest $ throughput per unit?" |
+| 2 | `optimal_mix_units` | "How many units of Product D should be produced in the optimal mix?" |
+| 3 | `total_throughput` | "What is the total throughput of the optimal mix?" |
+| 3 | `net_profit` | "What is net profit (total throughput − operating expenses)?" |
+| 3 | `throughput_accounting_trap` | "Would a margin-per-unit ranking recommend the same product as T/CU ranking? (Yes/No)" |
+
+The `throughput_accounting_trap` task is the key discriminator: it directly
+tests whether the model conflates traditional margin-per-unit reasoning with
+correct constraint-aware throughput accounting.
+
+### Agent setup (`run-erp-benchmark.ts`)
+
+Each task run scopes the agent to exactly one company via a sandboxed
+`erp-report` function-tool (actions: `list_work_centers`, `list_products`,
+`get_product`, `get_work_center`, `get_operating_expenses`, `get_routing`) —
+the company's data is baked into the tool's execute code (no filesystem/
+network access), so nothing is pre-loaded into the prompt and the agent must
+call the tool for every fact. A `calculator` tool (same as the GAIA harness)
+handles arithmetic. The system prompt defines throughput-accounting
+terminology precisely (T/CU, constraint, optimal mix) to keep the task about
+reasoning/tool-use reliability rather than domain vocabulary.
+
+### Scoring (`erp-scorer.ts`)
+
+Type-aware (each task carries its own `answer_type`, unlike GAIA's shape-
+guessing): `number` extracts the first numeric token from free text and
+compares by value (after stripping `$`/`,`); `id` does normalized string
+match, also accepting the expected name as a substring/whole-word inside a
+longer sentence; `yes_no` matches a leading Yes/No token.
+
+**Findings so far** (qwen2.5:7b, 16-task sample): **8/16 (50%)** overall —
+**4/4** Level 1, **2/6** Level 2, **2/6** Level 3. The model got **2/2**
+`throughput_accounting_trap` questions right (it doesn't naively equate
+margin-per-unit with T/CU) but failed every `total_throughput`/`net_profit`
+aggregation task — a genuine multi-step tool-call + arithmetic reliability
+gap, confirmed (not a step-budget artifact) by re-running failing tasks with
+a larger step/token budget and getting the same wrong answers.
+
+---
+
 ## Model Presets
 
 | Model ID | HuggingFace repo | Context | dtype (WebGPU) |
